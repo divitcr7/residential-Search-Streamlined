@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function ThemeToggle() {
@@ -46,11 +45,11 @@ export function ThemeToggle() {
     return (
       <Button
         variant="ghost"
-        size="icon"
-        className="relative overflow-hidden bg-white/10 hover:bg-white/20 text-white border border-white/20"
+        size="sm"
+        className="bg-white/10 hover:bg-white/20 text-white border border-white/20"
         disabled
       >
-        <Sun className="h-5 w-5" />
+        {isDark ? "Light" : "Dark"}
       </Button>
     );
   }
@@ -58,27 +57,12 @@ export function ThemeToggle() {
   return (
     <Button
       variant="ghost"
-      size="icon"
+      size="sm"
       onClick={toggleTheme}
-      className="relative overflow-hidden bg-white/10 hover:bg-white/20 text-white border border-white/20 z-50 transition-all duration-200"
+      className="bg-white/10 hover:bg-white/20 text-white border border-white/20 z-50 transition-all duration-200"
       aria-label={`Switch to ${isDark ? "light" : "dark"} mode`}
     >
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div
-          key={isDark ? "dark" : "light"}
-          initial={{ y: -20, opacity: 0, rotate: -90 }}
-          animate={{ y: 0, opacity: 1, rotate: 0 }}
-          exit={{ y: 20, opacity: 0, rotate: 90 }}
-          transition={{ duration: 0.3, ease: "easeInOut" }}
-          className="flex items-center justify-center"
-        >
-          {isDark ? (
-            <Sun className="h-5 w-5 text-yellow-400" />
-          ) : (
-            <Moon className="h-5 w-5 text-blue-400" />
-          )}
-        </motion.div>
-      </AnimatePresence>
+      {isDark ? "Light" : "Dark"}
     </Button>
   );
 }

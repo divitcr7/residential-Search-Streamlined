@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { Car, MapPin, Star, Route } from "lucide-react";
 import { RouteForm } from "@/components/RouteForm";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Map } from "@/components/ui/Map";
@@ -50,34 +51,30 @@ export default function HomePage() {
     <div className="relative w-full h-screen overflow-hidden">
       {/* Background Map */}
       <div className="absolute inset-0">
-        <Map className="w-full h-full" />
+        <Map className="w-full h-full" hideControls />
       </div>
 
       {/* Floating Header */}
       <motion.header
-        initial={{ opacity: 0, y: -20 }}
+        initial={{ opacity: 1, y: 0 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.19, 1, 0.22, 1] }}
         className="absolute top-0 left-0 right-0 z-10 p-6"
       >
         <div className="flex justify-between items-center">
           <motion.div
-            initial={{ opacity: 0, x: -20 }}
+            initial={{ opacity: 1, x: 0 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, delay: 0.1, ease: [0.19, 1, 0.22, 1] }}
+            className="bg-black/60 backdrop-blur-sm rounded-lg px-3 py-2"
           >
-            <h1 className="text-2xl font-bold text-white drop-shadow-lg">
-              Property Finder
-            </h1>
-            <p className="text-sm text-white/80 drop-shadow">
+            <h1 className="text-2xl font-bold text-white">Property Finder</h1>
+            <p className="text-sm text-white font-medium">
               Apartments along your route
             </p>
           </motion.div>
 
           <motion.div
-            initial={{ opacity: 0, x: 20 }}
+            initial={{ opacity: 1, x: 0 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, delay: 0.2, ease: [0.19, 1, 0.22, 1] }}
           >
             <ThemeToggle />
           </motion.div>
@@ -87,36 +84,27 @@ export default function HomePage() {
       {/* Main Content */}
       <div className="absolute inset-0 flex items-center justify-center p-6 z-10">
         <motion.div
-          initial={{ opacity: 0, y: 40 }}
+          initial={{ opacity: 1, y: 0 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.3, ease: [0.19, 1, 0.22, 1] }}
           className="w-full max-w-md"
         >
           <div className="text-center mb-8">
-            <motion.h2
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{
-                duration: 0.5,
-                delay: 0.4,
-                ease: [0.19, 1, 0.22, 1],
-              }}
-              className="text-4xl font-bold text-white drop-shadow-lg mb-4 text-balance"
-            >
-              Find Your Perfect Commute
-            </motion.h2>
-            <motion.p
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{
-                duration: 0.5,
-                delay: 0.5,
-                ease: [0.19, 1, 0.22, 1],
-              }}
-              className="text-lg text-white/90 drop-shadow text-balance"
-            >
-              Discover apartments within 1-3 miles of your daily route
-            </motion.p>
+            <div className="bg-black/60 backdrop-blur-sm rounded-xl px-6 py-4 mb-6">
+              <motion.h2
+                initial={{ opacity: 1, y: 0 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-4xl font-bold text-white mb-4 text-balance"
+              >
+                Find Your Perfect Commute
+              </motion.h2>
+              <motion.p
+                initial={{ opacity: 1, y: 0 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-lg text-white text-balance font-medium"
+              >
+                Discover apartments within 1-3 miles of your daily route
+              </motion.p>
+            </div>
           </div>
 
           <RouteForm onSubmit={handleFormSubmit} isLoading={isLoading} />
@@ -136,50 +124,48 @@ export default function HomePage() {
 
       {/* Feature Highlights */}
       <motion.div
-        initial={{ opacity: 0, y: 40 }}
+        initial={{ opacity: 1, y: 0 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.6, ease: [0.19, 1, 0.22, 1] }}
         className="absolute bottom-6 left-6 right-6 z-10"
       >
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-4xl mx-auto">
           {[
             {
-              icon: "🚗",
+              icon: Car,
               title: "Multiple Travel Modes",
               description: "Drive, bike, or walk routes",
             },
             {
-              icon: "📍",
+              icon: Route,
               title: "Distance Buckets",
               description: "≤1mi, ≤2mi, ≤3mi from route",
             },
             {
-              icon: "⭐",
+              icon: Star,
               title: "Google Ratings",
               description: "Real reviews and photos",
             },
           ].map((feature, index) => (
             <motion.div
               key={feature.title}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 1, y: 0 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{
-                duration: 0.4,
-                delay: 0.7 + index * 0.1,
-                ease: [0.19, 1, 0.22, 1],
-              }}
               className="glass-card p-4 text-center"
             >
-              <div className="text-2xl mb-2">{feature.icon}</div>
+              <div className="flex justify-center mb-2">
+                <feature.icon className="h-6 w-6 text-accent-teal" />
+              </div>
               <h3 className="font-semibold text-white mb-1">{feature.title}</h3>
-              <p className="text-sm text-white/70">{feature.description}</p>
+              <p className="text-sm text-white/90 font-medium">
+                {feature.description}
+              </p>
             </motion.div>
           ))}
         </div>
       </motion.div>
 
-      {/* Gradient Overlay */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/40 pointer-events-none" />
+      {/* Enhanced Gradient Overlay for better text contrast */}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/60 pointer-events-none" />
     </div>
   );
 }

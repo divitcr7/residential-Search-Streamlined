@@ -53,29 +53,31 @@
   * {
     @apply border-border;
   }
-  
+
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
   }
-  
+
   html {
     scroll-behavior: smooth;
   }
-  
+
   /* Custom scrollbar */
   ::-webkit-scrollbar {
     width: 8px;
   }
-  
+
   ::-webkit-scrollbar-track {
     @apply bg-muted;
   }
-  
+
   ::-webkit-scrollbar-thumb {
     @apply bg-accent-teal rounded-full;
   }
-  
+
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-accent-teal/80;
   }
@@ -85,21 +87,21 @@
   .text-balance {
     text-wrap: balance;
   }
-  
+
   .line-clamp-1 {
     overflow: hidden;
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 1;
   }
-  
+
   .line-clamp-2 {
     overflow: hidden;
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
   }
-  
+
   .line-clamp-3 {
     overflow: hidden;
     display: -webkit-box;
@@ -111,11 +113,11 @@
 /* Glass morphism utilities */
 @layer components {
   .glass {
-    @apply backdrop-blur-lg bg-background/30 border border-white/20;
+    @apply backdrop-blur-xl bg-background/40 border border-white/30;
   }
-  
+
   .glass-card {
-    @apply glass rounded-xl shadow-2xl;
+    @apply glass rounded-xl shadow-2xl backdrop-blur-xl bg-background/35 border-white/25;
   }
 }
 
@@ -136,7 +138,7 @@
   [data-radix-popper-content-wrapper] {
     z-index: 50 !important;
   }
-  
+
   .focus-visible\:ring-2:focus-visible {
     outline: 2px solid transparent;
     outline-offset: 2px;
@@ -162,7 +164,9 @@
 }
 
 /* Ensure full height for main containers */
-html, body, #__next {
+html,
+body,
+#__next {
   height: 100%;
 }
 
@@ -171,4 +175,4 @@ html, body, #__next {
   .glass {
     @apply bg-background border-2 border-foreground;
   }
-} 
+}

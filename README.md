@@ -1,249 +1,225 @@
-# Property Finder - Apartments Along Your Route
+# 🏠 Property Finder
 
-A Next.js 14 web application that helps you find apartment complexes along your commute route. Enter your origin and destination, choose your travel mode (drive, bike, walk), and discover housing options within 1, 2, or 3 miles of your path.
+**Find Your Perfect Commute** - Discover apartments within 1-3 miles of your daily route.
 
-## ✨ Features
+[![License](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
+[![Next.js](https://img.shields.io/badge/Next.js-14.2-blueviolet.svg)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.0-38B2AC.svg)](https://tailwindcss.com/)
 
-- **Route-Based Search**: Find apartments along your specific commute route
-- **Multiple Travel Modes**: Support for driving, biking, and walking routes
-- **Distance Buckets**: Filter results by ≤1mi, ≤2mi, or ≤3mi from your route
-- **Interactive Maps**: Full Google Maps integration with route visualization
-- **Real-Time Data**: Live apartment listings with Google ratings and photos
-- **Responsive Design**: Works seamlessly from mobile (375px) to 4K displays
-- **Dark Mode First**: Beautiful dark theme with light mode toggle
-- **Accessibility**: WCAG 2.2 AA compliant with keyboard navigation
-- **Performance**: Lighthouse score ≥95 with zero CLS
+## 🌟 Overview
+
+Property Finder is an innovative web application that helps users discover apartments along their daily commute routes. Whether you drive, take transit, bike, or walk to work, our platform finds housing options within 1-3 miles of your route, making your daily journey convenient and efficient.
+
+### ✨ Key Features
+
+- **🗺️ Multi-Modal Route Planning** - Support for driving, transit, biking, and walking routes
+- **📍 Smart Location Search** - Google Places autocomplete for accurate address input
+- **🏢 Apartment Discovery** - Find apartments within customizable distance buckets (≤1mi, ≤2mi, ≤3mi)
+- **🚌 Transit Integration** - Real-time transit information with multiple route options
+- **⭐ Google Ratings** - See real reviews and photos for each property
+- **🌙 Dark Theme** - Beautiful dark-themed Google Maps integration
+- **📱 Responsive Design** - Works seamlessly on desktop and mobile devices
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- Node.js 18.17.0 or higher
-- pnpm 8.0.0 or higher
-- Google Maps API key with the following APIs enabled:
+- Node.js 18+
+- npm or yarn
+- Google Maps API Key with the following APIs enabled:
   - Maps JavaScript API
   - Places API
-  - Routes API
-  - Places API (New)
+  - Directions API
+  - Distance Matrix API
 
 ### Installation
 
-```bash
-# Clone the repository
-git clone <repository-url>
-cd property-finder
+1. **Clone the repository**
 
-# Install dependencies
-pnpm install
+   ```bash
+   git clone https://github.com/yourusername/property-finder.git
+   cd property-finder
+   ```
 
-# Set up environment variables
-cp .env.example .env.local
+2. **Install dependencies**
 
-# Add your Google Maps API key to .env.local
-echo "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_api_key_here" >> .env.local
-echo "GOOGLE_MAPS_BACKEND_API_KEY=your_api_key_here" >> .env.local
+   ```bash
+   npm install
+   # or
+   yarn install
+   ```
 
-# Start the development server
-pnpm dev
-```
+3. **Set up environment variables**
 
-Visit [http://localhost:3000](http://localhost:3000) to see the application.
+   ```bash
+   cp .env.example .env.local
+   ```
 
-## 🛠 Tech Stack
+   Add your Google Maps API keys to `.env.local`:
 
-### Frontend
-- **Next.js 14** - App Router for modern React development
-- **TypeScript** - Type-safe JavaScript
-- **Tailwind CSS 4** - Utility-first styling with JIT compilation
-- **Framer Motion 12** - GPU-accelerated animations
-- **Radix UI** - Unstyled, accessible UI primitives
+   ```env
+   NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_frontend_api_key_here
+   GOOGLE_MAPS_API_KEY=your_backend_api_key_here
+   ```
 
-### Maps & APIs
-- **Google Maps JavaScript API** - Interactive map rendering
-- **Google Routes API v2** - Route computation
-- **Google Places API** - Search along route functionality
-- **@googlemaps/js-api-loader** - Efficient Maps API loading
+4. **Run the development server**
 
-### State & Utils
-- **@turf/nearest-point-on-line** - Geospatial distance calculations
-- **Server Actions** - Direct server-side API calls
-- **Runtime Cache** - Edge-compatible caching with TTL
+   ```bash
+   npm run dev
+   # or
+   yarn dev
+   ```
 
-## 📁 Project Structure
+5. **Open your browser**
+   Navigate to [http://localhost:3000](http://localhost:3000)
 
-```
-property-finder/
-├── src/
-│   ├── app/                    # Next.js App Router pages
-│   │   ├── _actions/          # Server actions
-│   │   ├── globals.css        # Global styles
-│   │   ├── layout.tsx         # Root layout
-│   │   ├── page.tsx           # Landing page
-│   │   └── results/           # Results page
-│   ├── components/            # React components
-│   │   ├── ui/               # Base UI components
-│   │   ├── ApartmentCard.tsx # Apartment listing cards
-│   │   ├── FilterChips.tsx   # Distance filter controls
-│   │   ├── RouteForm.tsx     # Search form
-│   │   └── ThemeToggle.tsx   # Dark/light mode toggle
-│   ├── lib/                  # Utility functions
-│   │   ├── cache.ts          # Runtime caching
-│   │   ├── maps.ts           # Google Maps utilities
-│   │   └── utils.ts          # General utilities
-│   └── types/                # TypeScript type definitions
-├── public/                   # Static assets
-├── .env.example             # Environment variables template
-└── README.md               # Project documentation
-```
+## 🛠️ Tech Stack
 
-## 🗺️ Google Maps Setup
+- **Frontend**: Next.js 14, React 18, TypeScript
+- **Styling**: Tailwind CSS, Framer Motion for animations
+- **Maps**: Google Maps JavaScript API, Google Places API
+- **UI Components**: Custom component library with shadcn/ui inspiration
+- **State Management**: React hooks and context
+- **Routing**: Next.js App Router
 
-### Required APIs
+## 📖 Usage
 
-Enable these APIs in your Google Cloud Console:
+1. **Enter Your Route**
+   - Input your origin (home/current location)
+   - Input your destination (work/target location)
+   - Select your preferred travel mode
 
-1. **Maps JavaScript API** - For map rendering
-2. **Places API** - For place details and photos
-3. **Routes API** - For route computation
-4. **Places API (New)** - For search along route
+2. **Choose Your Route**
+   - For transit: Select from multiple route options
+   - View timing, cost, and duration for each option
 
-### API Key Configuration
+3. **Discover Apartments**
+   - Browse apartments categorized by distance from your route
+   - Filter by transit stops (for transit routes)
+   - View ratings, photos, and details
 
-Create two environment variables in `.env.local`:
-
-```bash
-# Frontend API key (with domain restrictions)
-NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_frontend_api_key
-
-# Backend API key (with IP restrictions)
-GOOGLE_MAPS_BACKEND_API_KEY=your_backend_api_key
-```
-
-### Attribution Requirements
-
-The application automatically includes required Google Maps attributions:
-- "© Google" watermark in bottom-right corner
-- "Map data © 2025 Google" copyright notice
-- Maps remain visible when displaying place information
-
-## 🎨 Design System
-
-### Colors
-- **Charcoal**: `#111111` - Primary dark background
-- **Off-white**: `#fafafa` - Primary light background  
-- **Accent Teal**: `#29d3c2` - Interactive elements and highlights
-
-### Typography
-- **Font**: Inter with `font-display: swap`
-- **Scale**: 12px baseline rhythm with 8pt spacing scale
-- **Weights**: 400 (regular), 500 (medium), 600 (semibold), 700 (bold)
-
-### Animations
-- **Duration**: 120ms for micro-interactions
-- **Easing**: `cubic-bezier(0.19, 1, 0.22, 1)` for smooth motion
-- **Reduced Motion**: Respects `prefers-reduced-motion` setting
-
-## 🔧 Development
-
-### Available Scripts
-
-```bash
-# Development server
-pnpm dev
-
-# Production build
-pnpm build
-
-# Start production server
-pnpm start
-
-# Lint code
-pnpm lint
-
-# Type checking
-pnpm type-check
-```
-
-### Code Quality
-
-- **ESLint**: Configured with `eslint-config-next`
-- **Prettier**: Automatic code formatting
-- **TypeScript**: Strict mode enabled
-- **Performance**: Bundle size monitoring with optimization
-
-### Browser Support
-
-- **Modern Browsers**: Chrome 91+, Firefox 90+, Safari 14+, Edge 91+
-- **Mobile**: iOS Safari 14+, Chrome Android 91+
-- **Progressive Enhancement**: Works with JavaScript disabled
-
-## 📊 Performance
-
-### Bundle Size
-- **First Load**: ≤200KB gzipped (excluding Google Maps)
-- **Code Splitting**: Automatic with Next.js dynamic imports
-- **Tree Shaking**: Optimized for minimal bundle size
-
-### Core Web Vitals
-- **LCP**: ≤2.5s (Largest Contentful Paint)
-- **FID**: ≤100ms (First Input Delay)
-- **CLS**: 0 (Cumulative Layout Shift)
-
-### Caching Strategy
-- **Runtime Cache**: 10-minute TTL for API responses
-- **Static Assets**: Immutable caching with hashed filenames
-- **API Routes**: Server-side caching with invalidation
-
-## 🔒 Security
-
-### API Key Protection
-- Frontend keys restricted by domain
-- Backend keys restricted by server IP
-- No API keys exposed in client-side code
-
-### Data Privacy
-- No personal data collection
-- Search history not stored
-- Session storage for temporary results only
-
-## 🚀 Deployment
-
-### Vercel (Recommended)
-
-```bash
-# Deploy to Vercel
-vercel --prod
-
-# Set environment variables in Vercel dashboard
-```
-
-### Other Platforms
-
-Compatible with any Node.js hosting platform:
-- Netlify
-- Railway
-- DigitalOcean App Platform
-- AWS Amplify
+4. **Explore on Map**
+   - See your route highlighted on the dark-themed map
+   - View apartment locations with color-coded distance markers
+   - Click markers for detailed apartment information
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit changes: `git commit -m 'Add amazing feature'`
-4. Push to branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
+**We welcome developers to contribute to this open-source project!**
+
+### How to Contribute
+
+1. **Fork the repository**
+2. **Create a feature branch**
+   ```bash
+   git checkout -b feature/amazing-feature
+   ```
+3. **Make your changes**
+4. **Commit your changes**
+   ```bash
+   git commit -m 'Add some amazing feature'
+   ```
+5. **Push to the branch**
+   ```bash
+   git push origin feature/amazing-feature
+   ```
+6. **Open a Pull Request**
+
+### Development Guidelines
+
+- Follow TypeScript best practices
+- Use Tailwind CSS for styling
+- Write meaningful commit messages
+- Test your changes thoroughly
+- Update documentation as needed
+
+### Areas for Contribution
+
+- 🐛 Bug fixes and performance improvements
+- ✨ New features and enhancements
+- 📚 Documentation improvements
+- 🎨 UI/UX enhancements
+- 🧪 Testing coverage
+- 🌐 Internationalization
+
+## 📝 API Documentation
+
+### Environment Variables
+
+| Variable                          | Required | Description                     |
+| --------------------------------- | -------- | ------------------------------- |
+| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | Yes      | Client-side Google Maps API key |
+| `GOOGLE_MAPS_API_KEY`             | Yes      | Server-side Google Maps API key |
+
+### Google Maps API Setup
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select existing
+3. Enable required APIs:
+   - Maps JavaScript API
+   - Places API
+   - Directions API
+   - Distance Matrix API
+4. Create credentials (API Key)
+5. Set up billing (required for Google Maps APIs)
+
+## 🔒 Security
+
+- **API Keys Protection**: All API keys are stored in environment variables and excluded from version control
+- **Rate Limiting**: Implemented caching to reduce API calls
+- **Input Validation**: All user inputs are validated and sanitized
+
+## 📊 Performance
+
+- **Caching**: Route and apartment data caching for improved performance
+- **Optimized Rendering**: Efficient React rendering with proper memoization
+- **Code Splitting**: Next.js automatic code splitting for faster loading
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**Maps not loading**
+
+- Verify your Google Maps API key is correct
+- Ensure all required APIs are enabled
+- Check browser console for error messages
+
+**Search not working**
+
+- Confirm Places API is enabled
+- Verify API key has proper permissions
+- Check network connectivity
+
+**No apartments found**
+
+- Try different routes or locations
+- Check if the area has apartment listings
+- Verify API quotas haven't been exceeded
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under a **Proprietary License**.
+
+⚠️ **IMPORTANT**: This software is provided for viewing and contribution purposes only. Any commercial use, redistribution, or deployment without explicit written permission from the author is strictly prohibited and may result in legal action.
+
+For licensing inquiries, please contact: [your-email@example.com]
 
 ## 🙏 Acknowledgments
 
-- [Google Maps Platform](https://developers.google.com/maps) for mapping services
-- [Tailwind CSS](https://tailwindcss.com) for the utility-first CSS framework
-- [Framer Motion](https://www.framer.com/motion/) for smooth animations
-- [Radix UI](https://www.radix-ui.com) for accessible UI primitives
+- Google Maps Platform for location services
+- Next.js team for the amazing framework
+- Tailwind CSS for the utility-first CSS framework
+- The open-source community for inspiration and tools
+
+## 📞 Contact
+
+- **Author**: [Your Name]
+- **Email**: [your-email@example.com]
+- **GitHub**: [@yourusername](https://github.com/yourusername)
+- **Website**: [your-website.com]
 
 ---
 
-**Property Finder** - Find your perfect commute. 🏠 + 🚗 = ❤️ 
+**Made with ❤️ for developers who value efficient commutes and quality housing.**

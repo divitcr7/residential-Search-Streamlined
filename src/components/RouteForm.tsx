@@ -45,12 +45,15 @@ export function RouteForm({
   const destinationAutocompleteRef =
     useRef<google.maps.places.Autocomplete | null>(null);
 
-  // Load Google Maps and initialize autocomplete
+  // Allow manual input - skip Google Maps autocomplete for now
   useEffect(() => {
+    // Just enable the inputs immediately
+    setIsGoogleMapsLoaded(true);
+
+    // Optional: Try to initialize autocomplete in background but don't block
     const initAutocomplete = async () => {
       try {
         await loadGoogleMaps();
-        setIsGoogleMapsLoaded(true);
 
         if (originInputRef.current) {
           originAutocompleteRef.current = new google.maps.places.Autocomplete(
@@ -107,20 +110,26 @@ export function RouteForm({
           );
         }
       } catch (error) {
-        console.error("Failed to initialize Google Maps autocomplete:", error);
+        console.log("Autocomplete not available, using manual input");
       }
     };
 
     initAutocomplete();
 
     return () => {
-      if (originAutocompleteRef.current) {
-        google.maps.event.clearInstanceListeners(originAutocompleteRef.current);
-      }
-      if (destinationAutocompleteRef.current) {
-        google.maps.event.clearInstanceListeners(
-          destinationAutocompleteRef.current
-        );
+      try {
+        if (originAutocompleteRef.current) {
+          google.maps.event.clearInstanceListeners(
+            originAutocompleteRef.current
+          );
+        }
+        if (destinationAutocompleteRef.current) {
+          google.maps.event.clearInstanceListeners(
+            destinationAutocompleteRef.current
+          );
+        }
+      } catch (error) {
+        // Ignore cleanup errors
       }
     };
   }, []);
@@ -148,12 +157,11 @@ export function RouteForm({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 1, y: 0 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, ease: [0.19, 1, 0.22, 1] }}
       className={cn("w-full max-w-md", className)}
     >
-      <Card className="backdrop-blur-lg bg-background/30 border-white/20 shadow-2xl">
+      <Card className="backdrop-blur-xl bg-background/40 border-white/30 shadow-2xl">
         <CardContent className="p-6">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-4">
@@ -164,8 +172,7 @@ export function RouteForm({
                   placeholder="Origin (e.g., Rice University)"
                   value={origin}
                   onChange={handleOriginChange}
-                  className="pl-11 bg-background/50"
-                  disabled={!isGoogleMapsLoaded}
+                  className="pl-11 bg-background/60 backdrop-blur-sm border-white/20"
                 />
               </div>
 
@@ -173,11 +180,10 @@ export function RouteForm({
                 <Navigation className="absolute left-3 top-3 h-5 w-5 text-muted-foreground z-10" />
                 <Input
                   ref={destinationInputRef}
-                  placeholder="Destination (e.g., University of Houston)"
+                  placeholder="Destination (e.g., Houston Downtown)"
                   value={destination}
                   onChange={handleDestinationChange}
-                  className="pl-11 bg-background/50"
-                  disabled={!isGoogleMapsLoaded}
+                  className="pl-11 bg-background/60 backdrop-blur-sm border-white/20"
                 />
               </div>
             </div>
@@ -193,10 +199,10 @@ export function RouteForm({
                     type="button"
                     onClick={() => setTravelMode(mode)}
                     className={cn(
-                      "flex flex-col items-center gap-2 p-3 rounded-lg border transition-all duration-120 hover:scale-105 active:scale-95",
+                      "flex flex-col items-center gap-2 p-3 rounded-lg border transition-all duration-120 hover:scale-105 active:scale-95 backdrop-blur-sm",
                       travelMode === mode
                         ? "bg-accent-teal text-charcoal border-accent-teal shadow-lg"
-                        : "bg-background/50 border-border hover:bg-accent hover:text-accent-foreground"
+                        : "bg-background/60 border-white/20 hover:bg-background/70 hover:text-accent-foreground"
                     )}
                   >
                     <Icon className="h-5 w-5" />
@@ -210,7 +216,7 @@ export function RouteForm({
               type="submit"
               variant="accent"
               size="lg"
-              className="w-full"
+              className="w-full backdrop-blur-sm"
               disabled={
                 !origin.trim() ||
                 !destination.trim() ||

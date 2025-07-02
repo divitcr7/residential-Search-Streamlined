@@ -175,9 +175,8 @@ function ResultsContent() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-120px)]">
           {/* Left Sidebar - Route Options and Apartments */}
           <div className="space-y-6 overflow-auto">
-            {/* Route Options (for Transit mode with multiple routes) */}
+            {/* Route Options (for multiple routes) */}
             {searchResult?.routeOptions &&
-              travelMode === "TRANSIT" &&
               searchResult.routeOptions.length > 1 && (
                 <RouteOptions
                   routes={searchResult.routeOptions}
