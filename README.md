@@ -204,7 +204,7 @@ This project is licensed under a **Proprietary License**.
 
 ⚠️ **IMPORTANT**: This software is provided for viewing and contribution purposes only. Any commercial use, redistribution, or deployment without explicit written permission from the author is strictly prohibited and may result in legal action.
 
-For licensing inquiries, please contact: [your-email@example.com]
+For licensing inquiries, please contact: divit.patidar@gmail.com
 
 ## 🙏 Acknowledgments
 
@@ -212,13 +212,6 @@ For licensing inquiries, please contact: [your-email@example.com]
 - Next.js team for the amazing framework
 - Tailwind CSS for the utility-first CSS framework
 - The open-source community for inspiration and tools
-
-## 📞 Contact
-
-- **Author**: [Your Name]
-- **Email**: [your-email@example.com]
-- **GitHub**: [@yourusername](https://github.com/yourusername)
-- **Website**: [your-website.com]
 
 ---
 
