@@ -33,12 +33,16 @@ export function RouteOptions({
   }
 
   return (
-    <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-foreground">
-        Choose Your Route ({routes.length} option{routes.length > 1 ? "s" : ""})
-      </h3>
+    <div className="space-y-5">
+      <div className="flex items-center gap-2">
+        <Navigation className="h-5 w-5 text-accent-teal" />
+        <h3 className="text-lg font-bold text-foreground">Choose Your Route</h3>
+        <span className="text-sm text-muted-foreground bg-muted/50 px-2 py-1 rounded-full">
+          {routes.length} option{routes.length > 1 ? "s" : ""}
+        </span>
+      </div>
 
-      <div className="space-y-3">
+      <div className="space-y-4">
         {routes.map((route, index) => (
           <motion.div
             key={route.route_id}
@@ -48,75 +52,81 @@ export function RouteOptions({
           >
             <Card
               className={cn(
-                "cursor-pointer transition-all duration-200 hover:shadow-lg",
+                "cursor-pointer transition-all duration-200 border border-border/50 hover:shadow-elevated",
                 selectedRouteIndex === index
-                  ? "ring-2 ring-accent-teal bg-accent-teal/5"
-                  : "hover:bg-accent/50"
+                  ? "ring-2 ring-accent-teal/50 bg-accent-teal/5 border-accent-teal/30 shadow-elevated"
+                  : "hover:bg-accent/30 hover:border-accent-teal/20 shadow-soft"
               )}
               onClick={() => onRouteSelect(index)}
             >
-              <CardContent className="p-4">
+              <CardContent className="p-5">
                 <div className="flex items-center justify-between">
-                  <div className="flex-1">
+                  <div className="flex-1 space-y-3">
                     {/* Route Summary */}
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="text-sm font-medium text-foreground">
+                    <div className="flex items-center gap-3">
+                      <h4 className="text-base font-semibold text-foreground line-clamp-1">
                         {route.summary}
-                      </div>
+                      </h4>
                       {selectedRouteIndex === index && (
-                        <span className="text-xs bg-accent-teal text-charcoal px-2 py-1 rounded-full">
+                        <span className="text-xs bg-accent-teal text-white px-2.5 py-1 rounded-full font-medium">
                           Selected
                         </span>
                       )}
                     </div>
 
                     {/* Transit Steps */}
-                    <div className="flex items-center gap-1 mb-3 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap">
                       {route.legs[0]?.steps.map((step, stepIndex) => (
                         <TransitStepIcon key={stepIndex} step={step} />
                       ))}
                     </div>
 
                     {/* Route Info */}
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <Clock className="h-4 w-4" />
-                        {route.legs[0]?.duration.text}
+                    <div className="flex items-center gap-6 text-sm">
+                      <div className="flex items-center gap-1.5 text-foreground">
+                        <Clock className="h-4 w-4 text-accent-teal" />
+                        <span className="font-medium">
+                          {route.legs[0]?.duration.text}
+                        </span>
                       </div>
 
                       {route.fare && (
-                        <div className="flex items-center gap-1">
-                          <DollarSign className="h-4 w-4" />
-                          {route.fare.text}
+                        <div className="flex items-center gap-1.5 text-foreground">
+                          <DollarSign className="h-4 w-4 text-accent-teal" />
+                          <span className="font-medium">{route.fare.text}</span>
                         </div>
                       )}
 
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
                         <MapPin className="h-4 w-4" />
-                        {route.legs[0]?.distance.text}
+                        <span>{route.legs[0]?.distance.text}</span>
                       </div>
                     </div>
 
                     {/* Departure/Arrival Times for Transit */}
                     {route.legs[0]?.departure_time && (
-                      <div className="mt-2 text-xs text-muted-foreground">
+                      <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2 font-medium">
                         Depart:{" "}
-                        {new Date(
-                          route.legs[0].departure_time.value * 1000
-                        ).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
+                        <span className="text-foreground">
+                          {new Date(
+                            route.legs[0].departure_time.value * 1000
+                          ).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
                         {route.legs[0]?.arrival_time && (
                           <>
                             {" "}
                             • Arrive:{" "}
-                            {new Date(
-                              route.legs[0].arrival_time.value * 1000
-                            ).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
+                            <span className="text-foreground">
+                              {new Date(
+                                route.legs[0].arrival_time.value * 1000
+                              ).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
                           </>
                         )}
                       </div>
@@ -125,10 +135,15 @@ export function RouteOptions({
 
                   <Button
                     variant={
-                      selectedRouteIndex === index ? "accent" : "outline"
+                      selectedRouteIndex === index ? "default" : "outline"
                     }
                     size="sm"
                     disabled={isLoading}
+                    className={cn(
+                      "ml-4",
+                      selectedRouteIndex === index &&
+                        "bg-accent-teal hover:bg-accent-teal/90"
+                    )}
                   >
                     {selectedRouteIndex === index ? "Selected" : "Select"}
                   </Button>
@@ -149,9 +164,9 @@ interface TransitStepIconProps {
 function TransitStepIcon({ step }: TransitStepIconProps) {
   if (step.travel_mode === "WALKING") {
     return (
-      <div className="flex items-center text-xs text-muted-foreground">
-        <Navigation className="h-3 w-3 mr-1" />
-        Walk
+      <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted/50 rounded-md px-2 py-1">
+        <Navigation className="h-3 w-3" />
+        <span className="font-medium">Walk</span>
       </div>
     );
   }
@@ -159,14 +174,14 @@ function TransitStepIcon({ step }: TransitStepIconProps) {
   if (step.travel_mode === "TRANSIT" && step.transit) {
     const vehicleType = step.transit.line.vehicle.type.toLowerCase();
     let icon = Bus;
-    let bgColor = "bg-blue-100 text-blue-700";
+    let bgColor = "bg-blue-100 text-blue-800";
 
     if (vehicleType.includes("subway") || vehicleType.includes("metro")) {
       icon = Train;
-      bgColor = "bg-green-100 text-green-700";
+      bgColor = "bg-green-100 text-green-800";
     } else if (vehicleType.includes("train") || vehicleType.includes("rail")) {
       icon = Train;
-      bgColor = "bg-purple-100 text-purple-700";
+      bgColor = "bg-purple-100 text-purple-800";
     }
 
     const IconComponent = icon;
@@ -174,7 +189,7 @@ function TransitStepIcon({ step }: TransitStepIconProps) {
     return (
       <div
         className={cn(
-          "flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium",
+          "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold",
           bgColor
         )}
         style={{
@@ -185,7 +200,7 @@ function TransitStepIcon({ step }: TransitStepIconProps) {
         }}
       >
         <IconComponent className="h-3 w-3" />
-        {step.transit.line.short_name || step.transit.line.name}
+        <span>{step.transit.line.short_name || step.transit.line.name}</span>
       </div>
     );
   }
