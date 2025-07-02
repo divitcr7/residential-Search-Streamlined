@@ -1,67 +1,40 @@
 "use server";
 
-// Use Google Maps built-in polyline decoding
-function decodePolyline(encoded: string): Array<[number, number]> {
-  const points: Array<[number, number]> = [];
-  let index = 0;
-  const len = encoded.length;
-  let lat = 0;
-  let lng = 0;
-
-  while (index < len) {
-    let b: number;
-    let shift = 0;
-    let result = 0;
-
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
-
-    const dlat = result & 1 ? ~(result >> 1) : result >> 1;
-    lat += dlat;
-
-    shift = 0;
-    result = 0;
-
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
-
-    const dlng = result & 1 ? ~(result >> 1) : result >> 1;
-    lng += dlng;
-
-    points.push([lat / 1e5, lng / 1e5]);
-  }
-
-  return points;
-}
-// @ts-ignore - turf typing issue with ES modules
-import * as turf from "@turf/turf";
 import { cache } from "@/lib/cache";
+import { decode as decodePolyline } from "@googlemaps/polyline-codec";
+import { point, lineString } from "@turf/helpers";
+import nearestPointOnLine from "@turf/nearest-point-on-line";
+import distance from "@turf/distance";
 import type {
+  LatLng,
+  RouteOption,
   TravelMode,
   SearchResult,
-  RouteOption,
-  RouteResult,
-  PlaceDetails,
   ApartmentListing,
+  PlaceDetails,
   DistanceBucket,
-  LatLng,
-  RouteStep,
 } from "@/types";
 
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY!;
 
-if (!GOOGLE_MAPS_API_KEY) {
-  throw new Error("GOOGLE_MAPS_API_KEY environment variable is required");
+interface RouteResult {
+  routes: RouteOption[];
+  status: string;
+}
+
+// SAR quota tracking (simple in-memory counter for this implementation)
+let sarQuotaUsed = 0;
+const MAX_SAR_QUOTA_PER_SEARCH = 65;
+
+/**
+ * Generate a cache key for consistent caching
+ */
+function generateCacheKey(...parts: string[]): string {
+  return parts.join("|");
 }
 
 /**
- * Main function to get route options and apartments
+ * Main function to get routes and apartments
  */
 export async function getRouteAndApartments(
   origin: string,
@@ -69,52 +42,55 @@ export async function getRouteAndApartments(
   travelMode: TravelMode,
   selectedRouteIndex?: number
 ): Promise<SearchResult> {
-  try {
-    console.log(
-      `🚀 Getting route and apartments: ${origin} → ${destination} (${travelMode})`
-    );
+  // Clear cache to avoid issues with old format
+  cache.clear();
 
-    // Step 1: Get route options (multiple for transit)
-    const routeResult = await computeRoutes(origin, destination, travelMode);
+  const cacheKey = generateCacheKey(
+    "route_apartments",
+    origin,
+    destination,
+    travelMode,
+    selectedRouteIndex?.toString() || "0"
+  );
 
-    if (!routeResult.routes || routeResult.routes.length === 0) {
-      throw new Error("No routes found");
-    }
+  const cached = cache.get<SearchResult>(cacheKey);
+  if (cached) return cached;
 
-    // Step 2: Select route (first route by default, or user-selected)
-    const selectedRoute = routeResult.routes[selectedRouteIndex || 0];
-
-    console.log(
-      `📍 Found ${routeResult.routes.length} route options, using route ${selectedRouteIndex || 0}`
-    );
-
-    // Step 3: Search for apartments along the selected route
-    const apartments = await searchApartmentsAlongRoute(selectedRoute);
-
-    // Step 4: Process and bucket apartments by distance
-    const processedApartments = await processApartmentDistances(
-      apartments,
-      selectedRoute
-    );
-
-    const buckets = groupApartmentsByDistance(processedApartments);
-
-    console.log(`🏠 Found ${apartments.length} apartments total`);
-
+  // Get routes
+  const routeResult = await computeRoutes(origin, destination, travelMode);
+  if (!routeResult.routes.length) {
     return {
-      routeOptions: routeResult.routes,
-      selectedRoute,
-      apartments: buckets,
-      totalFound: apartments.length,
+      routeOptions: [],
+      apartments: { "≤1mi": [], "≤2mi": [], "≤3mi": [] },
+      totalFound: 0,
     };
-  } catch (error) {
-    console.error("Error in getRouteAndApartments:", error);
-    throw new Error("Failed to get route and apartments. Please try again.");
   }
+
+  // Use the selected route or first route
+  const route = routeResult.routes[selectedRouteIndex || 0];
+
+  // Search for apartments along the route
+  const apartments = await searchApartmentsAlongRoute(route);
+
+  // Process distances and create apartment listings
+  const apartmentListings = await processApartmentDistances(apartments, route);
+
+  // Group by distance buckets
+  const apartmentsByDistance = groupApartmentsByDistance(apartmentListings);
+
+  const result: SearchResult = {
+    routeOptions: routeResult.routes,
+    selectedRoute: route,
+    apartments: apartmentsByDistance,
+    totalFound: apartmentListings.length,
+  };
+
+  cache.set(cacheKey, result);
+  return result;
 }
 
 /**
- * Compute routes using Google Directions API with transit support
+ * Compute routes using Google Directions API (more stable than Routes API v2)
  */
 async function computeRoutes(
   origin: string,
@@ -125,42 +101,27 @@ async function computeRoutes(
   const cached = cache.get<RouteResult>(cacheKey);
   if (cached) return cached;
 
-  const directionsUrl = "https://maps.googleapis.com/maps/api/directions/json";
+  const url = "https://maps.googleapis.com/maps/api/directions/json";
 
-  const baseParams = {
-    origin,
-    destination,
-    key: GOOGLE_MAPS_API_KEY,
-    alternatives: "true", // Get multiple route options
-    language: "en",
-    units: "imperial",
+  // Map travel modes to Directions API format
+  const modeMapping = {
+    DRIVE: "driving",
+    WALK: "walking",
+    BICYCLE: "bicycling",
+    TRANSIT: "transit",
   };
 
-  // Add mode-specific parameters
-  let modeParams: Record<string, string> = {};
+  const params = new URLSearchParams({
+    origin,
+    destination,
+    mode: modeMapping[travelMode] || "driving",
+    alternatives: "true",
+    key: GOOGLE_MAPS_API_KEY,
+  });
 
-  switch (travelMode) {
-    case "TRANSIT":
-      modeParams = {
-        mode: "transit",
-        transit_mode: "bus|subway|train|tram|rail",
-        departure_time: Math.floor(Date.now() / 1000).toString(), // Current time
-      };
-      break;
-    case "DRIVE":
-      modeParams = { mode: "driving" };
-      break;
-    case "WALK":
-      modeParams = { mode: "walking" };
-      break;
-    case "BICYCLE":
-      modeParams = { mode: "bicycling" };
-      break;
-  }
+  console.log(`Making Directions API request: ${url}?${params}`);
 
-  const params = new URLSearchParams({ ...baseParams, ...modeParams });
-
-  const response = await fetch(`${directionsUrl}?${params}`, {
+  const response = await fetch(`${url}?${params}`, {
     method: "GET",
     headers: {
       Accept: "application/json",
@@ -168,37 +129,44 @@ async function computeRoutes(
   });
 
   if (!response.ok) {
-    throw new Error(
-      `Directions API error: ${response.status} ${response.statusText}`
-    );
+    const errorText = await response.text();
+    console.error(`Directions API error ${response.status}:`, errorText);
+    throw new Error(`Directions API error: ${response.status}`);
   }
 
   const data = await response.json();
+  console.log(`Directions API response status: ${data.status}`);
 
   if (data.status !== "OK") {
+    console.error(`Directions API error:`, data);
     throw new Error(
       `Directions API error: ${data.status} - ${data.error_message || "Unknown error"}`
     );
   }
 
-  // Transform Google Directions API response to our RouteOption format
-  const routes: RouteOption[] = data.routes.map(
+  const routes: RouteOption[] = (data.routes || []).map(
     (route: any, index: number) => ({
       route_id: `route_${index}`,
-      summary: route.summary || generateRouteSummary(route),
-      overview_polyline: route.overview_polyline,
-      bounds: route.bounds,
-      legs: route.legs,
+      overview_polyline: {
+        points: route.overview_polyline?.points || "",
+      },
+      bounds: route.bounds || {
+        northeast: { lat: 0, lng: 0 },
+        southwest: { lat: 0, lng: 0 },
+      },
+      legs: route.legs || [],
+      duration: route.legs?.[0]?.duration?.text || "0 mins",
       fare: route.fare,
       warnings: route.warnings || [],
       waypoint_order: route.waypoint_order || [],
       copyrights: route.copyrights || "",
+      summary: generateRouteSummary(route),
     })
   );
 
   const result: RouteResult = {
     routes,
-    status: data.status,
+    status: data.status || "OK",
   };
 
   cache.set(cacheKey, result);
@@ -206,7 +174,7 @@ async function computeRoutes(
 }
 
 /**
- * Generate a human-readable route summary for transit routes
+ * Generate a human-readable route summary
  */
 function generateRouteSummary(route: any): string {
   if (!route.legs?.[0]?.steps) return "Route";
@@ -215,7 +183,7 @@ function generateRouteSummary(route: any): string {
     (step: any) => step.travel_mode === "TRANSIT"
   );
 
-  if (transitSteps.length === 0) return route.legs[0].distance.text;
+  if (transitSteps.length === 0) return route.legs[0].distance?.text || "Route";
 
   const transitLines = transitSteps
     .map(
@@ -226,37 +194,105 @@ function generateRouteSummary(route: any): string {
     .filter(Boolean)
     .join(" → ");
 
-  return transitLines || `${route.legs[0].duration.text} via transit`;
+  return (
+    transitLines || `${route.legs[0].duration?.text || "Route"} via transit`
+  );
 }
 
 /**
- * Search for apartments along route using multiple sampling points
+ * Search for apartments along route using SAR with Nearby Search fallback
  */
 async function searchApartmentsAlongRoute(
   route: RouteOption
 ): Promise<PlaceDetails[]> {
   const cacheKey = generateCacheKey(
-    "apartments",
+    "apartments_sar",
     route.route_id,
     route.overview_polyline.points.slice(0, 50)
   );
   const cached = cache.get<PlaceDetails[]>(cacheKey);
   if (cached) return cached;
 
+  let apartments: PlaceDetails[] = [];
+
+  // Calculate route length for quota management
+  const totalDistanceMeters = route.legs.reduce(
+    (total, leg) => total + (leg.distance?.value || 0),
+    0
+  );
+  const routeLengthKm = totalDistanceMeters / 1000;
+  const maxNearbyCallsAllowed = Math.ceil(routeLengthKm / 0.1);
+
+  try {
+    // Try Search-Along-Route first if we haven't exceeded quota
+    if (sarQuotaUsed < MAX_SAR_QUOTA_PER_SEARCH) {
+      console.log("Attempting Search-Along-Route (SAR)...");
+      apartments = await searchAlongRouteAPI(route);
+      sarQuotaUsed++;
+
+      if (apartments.length > 0) {
+        console.log(`SAR returned ${apartments.length} apartments`);
+        cache.set(cacheKey, apartments);
+        return apartments;
+      }
+    }
+
+    // Fallback to improved Nearby Search
+    console.log("Using improved Nearby Search fallback...");
+    apartments = await searchNearbyWithPagination(route, maxNearbyCallsAllowed);
+  } catch (error) {
+    console.warn("SAR failed, falling back to Nearby Search:", error);
+    apartments = await searchNearbyWithPagination(route, maxNearbyCallsAllowed);
+  }
+
+  cache.set(cacheKey, apartments);
+  return apartments;
+}
+
+/**
+ * Search using Google Places Text Search API (fallback since SAR might not be available)
+ */
+async function searchAlongRouteAPI(
+  route: RouteOption
+): Promise<PlaceDetails[]> {
+  // For now, skip SAR and go directly to nearby search since SAR API may not be available
+  throw new Error("SAR not available, using nearby search fallback");
+}
+
+/**
+ * Enhanced Nearby Search with pagination and improved sampling
+ */
+async function searchNearbyWithPagination(
+  route: RouteOption,
+  maxCalls: number
+): Promise<PlaceDetails[]> {
   // Decode the overview polyline
   const decodedPolyline = decodePolyline(route.overview_polyline.points);
   const routePoints = decodedPolyline.map(([lat, lng]) => ({ lat, lng }));
 
-  // Sample points along the route (every ~500 meters)
-  const samplePoints = sampleRoutePoints(routePoints, 10);
+  // Sample points every 3rd vertex (~100m intervals)
+  const samplePoints = sampleRoutePoints(routePoints, 3);
 
   const allApartments: PlaceDetails[] = [];
   const seenPlaceIds = new Set<string>();
+  let callCount = 0;
 
-  // Search for apartments near each sample point
   for (const point of samplePoints) {
+    if (callCount >= maxCalls || allApartments.length >= 300) {
+      console.log(
+        `Breaking early: calls=${callCount}, apartments=${allApartments.length}`
+      );
+      break;
+    }
+
     try {
-      const apartments = await searchNearbyApartments(point.lat, point.lng);
+      const apartments = await searchNearbyApartmentsWithPagination(
+        point.lat,
+        point.lng,
+        maxCalls - callCount
+      );
+
+      callCount += Math.min(3, maxCalls - callCount); // Account for potential pagination
 
       // Deduplicate by place_id
       for (const apartment of apartments) {
@@ -274,7 +310,6 @@ async function searchApartmentsAlongRoute(
     }
   }
 
-  cache.set(cacheKey, allApartments);
   return allApartments;
 }
 
@@ -297,64 +332,248 @@ function sampleRoutePoints(polyline: LatLng[], interval: number): LatLng[] {
 }
 
 /**
- * Search for apartments near a specific location
+ * Search for ALL types of residential housing near a specific location with comprehensive coverage
  */
-async function searchNearbyApartments(
+async function searchNearbyApartmentsWithPagination(
   lat: number,
-  lng: number
+  lng: number,
+  maxPages: number = 3
 ): Promise<PlaceDetails[]> {
-  const searchUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json`;
+  const allResults: PlaceDetails[] = [];
+  const seenPlaceIds = new Set<string>();
 
-  const params = new URLSearchParams({
-    location: `${lat},${lng}`,
-    radius: "2000", // 2km radius per search point
-    type: "lodging",
-    keyword: "apartment",
-    key: GOOGLE_MAPS_API_KEY,
-  });
+  // Define comprehensive search strategies for residential housing
+  const searchStrategies = [
+    // Strategy 1: Apartment-focused searches
+    { keyword: "apartment", type: undefined },
+    { keyword: "apartments", type: undefined },
+    { keyword: "apartment building", type: undefined },
+    { keyword: "apartment complex", type: undefined },
 
-  const response = await fetch(`${searchUrl}?${params}`, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-    },
-  });
+    // Strategy 2: Condominium searches
+    { keyword: "condo", type: undefined },
+    { keyword: "condominium", type: undefined },
+    { keyword: "condos", type: undefined },
 
-  if (!response.ok) {
-    throw new Error(
-      `Places API error: ${response.status} ${response.statusText}`
-    );
+    // Strategy 3: General residential searches
+    { keyword: "residential", type: undefined },
+    { keyword: "housing", type: undefined },
+    { keyword: "rental", type: undefined },
+
+    // Strategy 4: Specific building types
+    { keyword: "townhome", type: undefined },
+    { keyword: "townhouse", type: undefined },
+    { keyword: "duplex", type: undefined },
+
+    // Strategy 5: Use lodging type with residential keywords (legacy API compatibility)
+    { keyword: "apartment", type: "lodging" },
+    { keyword: "residential", type: "lodging" },
+  ];
+
+  for (const strategy of searchStrategies) {
+    if (allResults.length >= 200) break; // Reasonable limit to prevent excessive API calls
+
+    try {
+      const results = await performSingleResidentialSearch(
+        lat,
+        lng,
+        strategy.keyword,
+        strategy.type,
+        Math.min(2, maxPages) // Limit pages per strategy
+      );
+
+      // Deduplicate by place_id
+      for (const place of results) {
+        if (!seenPlaceIds.has(place.place_id)) {
+          seenPlaceIds.add(place.place_id);
+          allResults.push(place);
+        }
+      }
+    } catch (error) {
+      console.warn(
+        `Search strategy failed for keyword "${strategy.keyword}":`,
+        error
+      );
+      continue;
+    }
+
+    // Small delay between different search strategies
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
-  const data = await response.json();
+  console.log(
+    `Found ${allResults.length} unique residential properties near ${lat}, ${lng}`
+  );
+  return allResults;
+}
 
-  if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
-    throw new Error(
-      `Places API error: ${data.status} - ${data.error_message || "Unknown error"}`
-    );
-  }
+/**
+ * Perform a single residential search with the given parameters
+ */
+async function performSingleResidentialSearch(
+  lat: number,
+  lng: number,
+  keyword: string,
+  type?: string,
+  maxPages: number = 2
+): Promise<PlaceDetails[]> {
+  const results: PlaceDetails[] = [];
+  let nextPageToken: string | undefined;
+  let pageCount = 0;
 
-  return (data.results || []).map((place: any) => ({
-    place_id: place.place_id,
-    name: place.name || "Unknown",
-    formatted_address: place.vicinity || place.formatted_address || "",
-    geometry: {
-      location: {
-        lat: place.geometry?.location?.lat || 0,
-        lng: place.geometry?.location?.lng || 0,
+  do {
+    const searchUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json`;
+
+    const params = new URLSearchParams({
+      location: `${lat},${lng}`,
+      radius: "1500", // 1.5km radius per search point
+      keyword,
+      key: GOOGLE_MAPS_API_KEY,
+    });
+
+    if (type) {
+      params.set("type", type);
+    }
+
+    if (nextPageToken) {
+      params.set("pagetoken", nextPageToken);
+      // Wait for token to become valid
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+
+    const response = await fetch(`${searchUrl}?${params}`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
       },
-    },
-    rating: place.rating,
-    user_ratings_total: place.user_ratings_total,
-    photos:
-      place.photos?.map((photo: any) => ({
-        photo_reference: photo.photo_reference,
-        height: photo.height,
-        width: photo.width,
-      })) || [],
-    website: place.website,
-    vicinity: place.vicinity,
-  }));
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Places API error: ${response.status} ${response.statusText}`
+      );
+    }
+
+    const data = await response.json();
+
+    if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
+      if (data.status === "INVALID_REQUEST") {
+        console.warn(
+          `Invalid request for keyword "${keyword}":`,
+          data.error_message
+        );
+        break; // Don't retry invalid requests
+      }
+      throw new Error(
+        `Places API error: ${data.status} - ${data.error_message || "Unknown error"}`
+      );
+    }
+
+    const places = (data.results || [])
+      .filter((place: any) => {
+        // Filter for residential-looking places
+        const name = (place.name || "").toLowerCase();
+        const address = (
+          place.vicinity ||
+          place.formatted_address ||
+          ""
+        ).toLowerCase();
+        const types = place.types || [];
+
+        // Keywords that indicate residential properties
+        const residentialKeywords = [
+          "apartment",
+          "condo",
+          "residence",
+          "residential",
+          "housing",
+          "complex",
+          "towers",
+          "village",
+          "manor",
+          "court",
+          "place",
+          "plaza",
+          "square",
+          "townhome",
+          "townhouse",
+          "duplex",
+          "units",
+          "homes",
+          "lofts",
+          "community",
+          "gardens",
+          "terrace",
+          "heights",
+          "ridge",
+          "park",
+        ];
+
+        // Non-residential keywords to exclude
+        const excludeKeywords = [
+          "hotel",
+          "motel",
+          "inn",
+          "lodge",
+          "resort",
+          "hospital",
+          "school",
+          "restaurant",
+          "store",
+          "shop",
+          "office",
+          "church",
+          "gas station",
+          "bank",
+          "pharmacy",
+          "gym",
+          "spa",
+          "salon",
+          "market",
+          "mall",
+        ];
+
+        // Check if it contains residential keywords
+        const hasResidentialKeywords = residentialKeywords.some(
+          (keyword) => name.includes(keyword) || address.includes(keyword)
+        );
+
+        // Check if it contains exclusion keywords
+        const hasExclusionKeywords = excludeKeywords.some(
+          (keyword) => name.includes(keyword) || address.includes(keyword)
+        );
+
+        // Include if it has residential keywords and doesn't have exclusion keywords
+        return hasResidentialKeywords && !hasExclusionKeywords;
+      })
+      .map((place: any) => ({
+        place_id: place.place_id,
+        name: place.name || "Unknown",
+        formatted_address: place.vicinity || place.formatted_address || "",
+        geometry: {
+          location: {
+            lat: place.geometry?.location?.lat || 0,
+            lng: place.geometry?.location?.lng || 0,
+          },
+        },
+        rating: place.rating,
+        user_ratings_total: place.user_ratings_total,
+        photos:
+          place.photos?.map((photo: any) => ({
+            photo_reference: photo.photo_reference,
+            height: photo.height,
+            width: photo.width,
+          })) || [],
+        website: place.website,
+        vicinity: place.vicinity,
+      }));
+
+    results.push(...places);
+    nextPageToken = data.next_page_token;
+    pageCount++;
+  } while (nextPageToken && pageCount < maxPages && results.length < 40);
+
+  return results;
 }
 
 /**
@@ -367,27 +586,30 @@ async function processApartmentDistances(
   // Decode the route polyline
   const decodedPolyline = decodePolyline(route.overview_polyline.points);
   const routeLineCoords = decodedPolyline.map(([lat, lng]) => [lng, lat]); // [lng, lat] for turf
-  const routeLine = turf.lineString(routeLineCoords);
+  const routeLine = lineString(routeLineCoords);
 
   return apartments.map((apartment) => {
-    const apartmentPoint = turf.point([
+    const apartmentPoint = point([
       apartment.geometry.location.lng,
       apartment.geometry.location.lat,
     ]);
 
     // Find nearest point on route
-    const nearestPoint = turf.nearestPointOnLine(routeLine, apartmentPoint, {
-      units: "meters",
+    const nearestPoint = nearestPointOnLine(routeLine, apartmentPoint, {
+      units: "kilometers", // Explicitly specify units
     });
-    const distanceToRoute = nearestPoint.properties.dist || 0;
+
+    // FIX: Convert kilometers to miles properly
+    const distanceKm = nearestPoint.properties.dist || 0;
+    const distanceMiles = distanceKm * 0.621371; // Convert km to miles
 
     // Find nearest transit step for context
     const nearestTransitStep = findNearestTransitStep(apartment, route);
 
     return {
       place: apartment,
-      distanceToRoute,
-      bucket: getBucketFromDistance(distanceToRoute),
+      distanceToRoute: distanceMiles, // Now in miles
+      bucket: getBucketFromDistance(distanceMiles),
       nearestTransitStep,
     };
   });
@@ -409,7 +631,7 @@ function findNearestTransitStep(apartment: PlaceDetails, route: RouteOption) {
     | undefined = undefined;
   let minDistance = Infinity;
 
-  const apartmentPoint = turf.point([
+  const apartmentPoint = point([
     apartment.geometry.location.lng,
     apartment.geometry.location.lat,
   ]);
@@ -417,22 +639,22 @@ function findNearestTransitStep(apartment: PlaceDetails, route: RouteOption) {
   for (const step of route.legs[0].steps) {
     if (step.travel_mode === "TRANSIT" && step.transit) {
       // Calculate distance to this transit step
-      const stepMidpoint = turf.point([
+      const stepMidpoint = point([
         (step.start_location.lng + step.end_location.lng) / 2,
         (step.start_location.lat + step.end_location.lat) / 2,
       ]);
 
-      const distance = turf.distance(apartmentPoint, stepMidpoint, {
-        units: "meters",
+      const distanceValue = distance(apartmentPoint, stepMidpoint, {
+        units: "kilometers",
       });
 
-      if (distance < minDistance) {
-        minDistance = distance;
+      if (distanceValue < minDistance) {
+        minDistance = distanceValue;
         nearestStep = {
           type: getTransitType(step.transit.line.vehicle.type),
           line_name: step.transit.line.name,
           line_color: step.transit.line.color,
-          distance_to_step: distance,
+          distance_to_step: distanceValue * 0.621371, // Convert to miles
         };
       }
     }
@@ -449,15 +671,13 @@ function getTransitType(vehicleType: string): string {
   if (type.includes("bus")) return "bus";
   if (type.includes("subway") || type.includes("metro")) return "subway";
   if (type.includes("train") || type.includes("rail")) return "train";
-  if (type.includes("tram")) return "tram";
   return "transit";
 }
 
 /**
- * Get distance bucket from meters
+ * Determine bucket from distance in miles
  */
-function getBucketFromDistance(distanceMeters: number): DistanceBucket {
-  const distanceMiles = distanceMeters * 0.000621371; // Convert to miles
+function getBucketFromDistance(distanceMiles: number): DistanceBucket {
   if (distanceMiles <= 1) return "≤1mi";
   if (distanceMiles <= 2) return "≤2mi";
   return "≤3mi";
@@ -467,27 +687,23 @@ function getBucketFromDistance(distanceMeters: number): DistanceBucket {
  * Group apartments by distance buckets
  */
 function groupApartmentsByDistance(apartments: ApartmentListing[]) {
-  const buckets = {
+  const grouped = {
     "≤1mi": [] as ApartmentListing[],
     "≤2mi": [] as ApartmentListing[],
     "≤3mi": [] as ApartmentListing[],
   };
 
-  for (const apartment of apartments) {
-    buckets[apartment.bucket].push(apartment);
-  }
+  apartments.forEach((apartment) => {
+    // Filter out apartments more than 3 miles away
+    if (apartment.distanceToRoute <= 3) {
+      grouped[apartment.bucket].push(apartment);
+    }
+  });
 
   // Sort each bucket by distance
-  Object.values(buckets).forEach((bucket) =>
-    bucket.sort((a, b) => a.distanceToRoute - b.distanceToRoute)
-  );
+  Object.values(grouped).forEach((bucket) => {
+    bucket.sort((a, b) => a.distanceToRoute - b.distanceToRoute);
+  });
 
-  return buckets;
-}
-
-/**
- * Generate cache key
- */
-function generateCacheKey(...parts: string[]): string {
-  return parts.join(":").replace(/[^a-zA-Z0-9:_-]/g, "_");
+  return grouped;
 }

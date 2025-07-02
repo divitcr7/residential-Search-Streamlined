@@ -7,18 +7,23 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "jest",
+    "test:watch": "jest --watch"
   },
   "dependencies": {
     "@googlemaps/js-api-loader": "^1.16.6",
+    "@googlemaps/polyline-codec": "^1.0.28",
     "@radix-ui/react-dialog": "^1.0.5",
     "@radix-ui/react-select": "^2.0.0",
     "@radix-ui/react-slot": "^1.0.2",
     "@radix-ui/react-toggle": "^1.0.3",
     "@radix-ui/react-toggle-group": "^1.0.4",
+    "@turf/distance": "^7.2.0",
     "@turf/turf": "^6.5.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
+    "dotenv": "^17.0.1",
     "framer-motion": "^11.0.8",
     "lucide-react": "^0.356.0",
     "next": "14.2.30",
@@ -28,7 +33,11 @@
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@turf/helpers": "^7.2.0",
+    "@turf/nearest-point-on-line": "^7.2.0",
     "@types/google.maps": "^3.55.8",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.11.17",
     "@types/react": "^18.2.55",
     "@types/react-dom": "^18.2.19",
@@ -37,9 +46,12 @@
     "autoprefixer": "^10.4.17",
     "eslint": "^8.56.0",
     "eslint-config-next": "14.1.0",
+    "jest": "^30.0.3",
+    "jest-environment-jsdom": "^30.0.2",
     "postcss": "^8.4.35",
     "prettier": "^3.2.5",
     "tailwindcss": "^3.4.1",
+    "ts-jest": "^29.4.0",
     "typescript": "^5.3.3"
   },
   "engines": {
