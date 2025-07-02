@@ -44,11 +44,11 @@ const nearbySearchCache = {
 };
 
 // Performance constants
-const MAX_CONCURRENT_REQUESTS = 3; // Reduced to avoid API limits
+const MAX_CONCURRENT_REQUESTS = 5; // Increased for better coverage
 const MAX_SAR_CALLS_PER_HOUR = 65;
 const GEOHASH_PRECISION = 3; // Simplified precision
-const SAMPLE_INTERVAL = 5; // Reduced sampling frequency
-const KEYWORDS = ["apartment", "condo"]; // Simplified keywords
+const SAMPLE_INTERVAL = 2; // Much more frequent sampling
+const KEYWORDS = ["apartment", "apartment complex", "condo", "housing"]; // More comprehensive keywords
 
 // Request limiter for concurrency control
 const limit = pLimit(MAX_CONCURRENT_REQUESTS);
@@ -193,6 +193,7 @@ async function searchApartmentsPerformant(
     apartments = await adaptiveSampler(route);
   }
 
+  console.log(`🏠 Found ${apartments.length} apartments along route`);
   sarCache.set(cacheKey, apartments);
   return apartments;
 }
@@ -214,27 +215,57 @@ async function adaptiveSampler(route: RouteOption): Promise<LightApartment[]> {
   const decodedPolyline = decodePolyline(route.overview_polyline.points);
   const routePoints = decodedPolyline.map(([lat, lng]) => ({ lat, lng }));
 
-  // Sample every 3rd vertex (~100m intervals)
-  const samplePoints = sampleRoutePoints(routePoints, SAMPLE_INTERVAL);
+  // Use multiple sampling strategies for comprehensive coverage
+  const intervalPoints = sampleRoutePoints(routePoints, SAMPLE_INTERVAL);
+  const distancePoints = sampleRouteByDistance(routePoints, 400); // Every 400m
+
+  // Combine and deduplicate sampling points
+  const allSamplePoints = [...intervalPoints, ...distancePoints];
+  const uniquePoints = deduplicatePoints(allSamplePoints, 300); // Remove points within 300m
+
+  console.log(
+    `🗺️ Sampling ${uniquePoints.length} points distributed along entire route`
+  );
 
   const allApartments: LightApartment[] = [];
   const seenGeohashes = new Set<string>();
 
-  // Process points with concurrency control - limit to first 10 points
-  const limitedSamplePoints = samplePoints.slice(0, 10);
+  // Process more points for comprehensive route coverage
+  const limitedSamplePoints = uniquePoints.slice(0, 50);
 
-  for (const point of limitedSamplePoints) {
+  // Create route line for filtering apartments
+  const routeLineCoords = routePoints.map((p) => [p.lng, p.lat]);
+  const routeLine = lineString(routeLineCoords);
+
+  for (const searchPoint of limitedSamplePoints) {
     // Early termination if we have enough apartments
-    if (allApartments.length >= 30) break;
+    if (allApartments.length >= 60) break;
 
     try {
-      const apartments = await searchNearPointConcurrent(point.lat, point.lng);
+      const apartments = await searchNearPointConcurrent(
+        searchPoint.lat,
+        searchPoint.lng
+      );
 
-      // Add apartments with geohash deduplication
-      for (const apartment of apartments) {
+      // Filter apartments to only those actually close to the route
+      const routeFilteredApartments = apartments.filter((apartment) => {
+        const aptPoint = point([apartment.lng, apartment.lat]);
+        const nearestPoint = nearestPointOnLine(routeLine, aptPoint, {
+          units: "kilometers",
+        });
+        const distanceToRoute = nearestPoint.properties.dist || 0;
+        return distanceToRoute <= 4.0; // Within 4km of route (generous for urban areas)
+      });
+
+      console.log(
+        `📍 Point ${searchPoint.lat.toFixed(3)},${searchPoint.lng.toFixed(3)}: found ${apartments.length} apartments, ${routeFilteredApartments.length} near route`
+      );
+
+      // Add route-filtered apartments with geohash deduplication
+      for (const apartment of routeFilteredApartments) {
         if (
           !seenGeohashes.has(apartment.geohash) &&
-          allApartments.length < 30
+          allApartments.length < 60
         ) {
           seenGeohashes.add(apartment.geohash);
           allApartments.push(apartment);
@@ -242,7 +273,7 @@ async function adaptiveSampler(route: RouteOption): Promise<LightApartment[]> {
       }
     } catch (error) {
       console.warn(
-        `Failed to search near point ${point.lat}, ${point.lng}:`,
+        `Failed to search near point ${searchPoint.lat}, ${searchPoint.lng}:`,
         error
       );
       continue;
@@ -279,11 +310,21 @@ async function searchNearPointConcurrent(
       const results = await performSingleSearch(lat, lng, keyword);
       apartments.push(...results);
 
-      // Break if we have enough results
-      if (apartments.length >= 10) break;
+      // Break if we have enough results for this point
+      if (apartments.length >= 15) break;
     } catch (error) {
       console.warn(`Search failed for keyword ${keyword}:`, error);
       continue;
+    }
+  }
+
+  // If we don't have many results, try a type-based search for lodging
+  if (apartments.length < 8) {
+    try {
+      const lodgingResults = await performTypeSearch(lat, lng, "lodging");
+      apartments.push(...lodgingResults);
+    } catch (error) {
+      console.warn(`Lodging search failed:`, error);
     }
   }
 
@@ -306,7 +347,7 @@ async function performSingleSearch(
     const url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json";
     const params = new URLSearchParams({
       location: `${lat},${lng}`,
-      radius: "1500",
+      radius: "3000", // Further increased radius for comprehensive coverage
       keyword,
       key: GOOGLE_MAPS_API_KEY,
     });
@@ -359,6 +400,74 @@ async function performSingleSearch(
 }
 
 /**
+ * Perform type-based search for lodging to catch more apartments
+ */
+async function performTypeSearch(
+  lat: number,
+  lng: number,
+  type: string,
+  retryCount = 0
+): Promise<LightApartment[]> {
+  try {
+    const url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json";
+    const params = new URLSearchParams({
+      location: `${lat},${lng}`,
+      radius: "2500",
+      type,
+      key: GOOGLE_MAPS_API_KEY,
+    });
+
+    const response = await fetch(`${url}?${params}`);
+
+    if (response.status === 429 && retryCount < 3) {
+      await exponentialBackoff(retryCount);
+      return performTypeSearch(lat, lng, type, retryCount + 1);
+    }
+
+    if (!response.ok) {
+      metrics.recordApiCall("nearby_search", "error");
+      throw new Error(`Places API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
+      metrics.recordApiCall("nearby_search", "error");
+      throw new Error(`Places API error: ${data.status}`);
+    }
+
+    metrics.recordApiCall("nearby_search", "success");
+
+    // Filter more strictly for residential places when using lodging type
+    return (data.results || [])
+      .filter((place: any) => isResidentialPlace(place) && !isHotelType(place))
+      .map((place: any) => ({
+        place_id: place.place_id,
+        name: place.name || "Unknown",
+        lat: place.geometry.location.lat,
+        lng: place.geometry.location.lng,
+        geohash: encodeGeohash(
+          place.geometry.location.lat,
+          place.geometry.location.lng,
+          GEOHASH_PRECISION
+        ),
+      }));
+  } catch (error) {
+    console.warn(`Type search failed for ${type} at ${lat}, ${lng}:`, error);
+    return [];
+  }
+}
+
+/**
+ * Check if place is a hotel/motel rather than apartments
+ */
+function isHotelType(place: any): boolean {
+  const name = (place.name || "").toLowerCase();
+  const hotelKeywords = ["hotel", "motel", "inn", "lodge", "resort", "suites"];
+  return hotelKeywords.some((keyword) => name.includes(keyword));
+}
+
+/**
  * Filter for residential places using optimized keyword matching
  */
 function isResidentialPlace(place: any): boolean {
@@ -376,6 +485,14 @@ function isResidentialPlace(place: any): boolean {
     "complex",
     "towers",
     "village",
+    "loft",
+    "housing",
+    "homes",
+    "living",
+    "manor",
+    "court",
+    "plaza",
+    "place",
   ];
   const excludeKeywords = [
     "hotel",
@@ -421,6 +538,81 @@ function sampleRoutePoints(polyline: LatLng[], interval: number): LatLng[] {
     samplePoints.push(polyline[polyline.length - 1]);
   }
   return samplePoints;
+}
+
+/**
+ * Sample route points by distance intervals (more consistent spacing)
+ */
+function sampleRouteByDistance(
+  polyline: LatLng[],
+  distanceMeters: number
+): LatLng[] {
+  if (polyline.length < 2) return polyline;
+
+  const samplePoints: LatLng[] = [polyline[0]]; // Always include start
+  let accumulatedDistance = 0;
+  let nextSampleDistance = distanceMeters;
+
+  for (let i = 1; i < polyline.length; i++) {
+    const prevPoint = point([polyline[i - 1].lng, polyline[i - 1].lat]);
+    const currentPoint = point([polyline[i].lng, polyline[i].lat]);
+    const segmentDistance = distance(prevPoint, currentPoint, {
+      units: "meters",
+    });
+
+    accumulatedDistance += segmentDistance;
+
+    if (accumulatedDistance >= nextSampleDistance) {
+      samplePoints.push(polyline[i]);
+      nextSampleDistance += distanceMeters;
+    }
+  }
+
+  // Always include the destination
+  const lastPoint = polyline[polyline.length - 1];
+  if (samplePoints[samplePoints.length - 1] !== lastPoint) {
+    samplePoints.push(lastPoint);
+  }
+
+  return samplePoints;
+}
+
+/**
+ * Remove duplicate points within a certain distance threshold
+ */
+function deduplicatePoints(
+  points: LatLng[],
+  minDistanceMeters: number
+): LatLng[] {
+  if (points.length <= 1) return points;
+
+  const uniquePoints: LatLng[] = [points[0]];
+
+  for (let i = 1; i < points.length; i++) {
+    const newPoint = point([points[i].lng, points[i].lat]);
+    let isTooClose = false;
+
+    for (const existingPoint of uniquePoints) {
+      const existingPointGeometry = point([
+        existingPoint.lng,
+        existingPoint.lat,
+      ]);
+      const dist = distance(newPoint, existingPointGeometry, {
+        units: "meters",
+      });
+
+      if (dist < minDistanceMeters) {
+        isTooClose = true;
+        break;
+      }
+    }
+
+    if (!isTooClose) {
+      uniquePoints.push(points[i]);
+    }
+  }
+
+  return uniquePoints;
 }
 
 /**

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Image from "next/image";
 import { motion } from "framer-motion";
 import { Star, ExternalLink, MapPin, Bus, Train, Route } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -91,9 +92,11 @@ export function ApartmentCard({ apartment, className }: ApartmentCardProps) {
         <div className="relative">
           {photoUrl ? (
             <div className="aspect-[16/10] overflow-hidden bg-muted">
-              <img
+              <Image
                 src={photoUrl}
                 alt={place.name}
+                width={400}
+                height={250}
                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                 loading="lazy"
               />
