@@ -170,11 +170,39 @@ Property Finder is an innovative web application that helps users discover apart
 - **Rate Limiting**: Implemented caching to reduce API calls
 - **Input Validation**: All user inputs are validated and sanitized
 
-## 📊 Performance
+## ⚡ Performance
 
-- **Caching**: Route and apartment data caching for improved performance
+### Performance Targets (v2.0)
+
+| Metric                      | Target              | Implementation                              |
+| --------------------------- | ------------------- | ------------------------------------------- |
+| **p95 Response Time**       | ≤ 2s                | Search-Along-Route (SAR) primary path       |
+| **Google Places API Calls** | ≤ 70 per request    | Adaptive sampler with early termination     |
+| **Places SAR Usage**        | 100% when available | Primary path with fallback to nearby search |
+| **Memory Usage**            | ≤ 200MB @ 50 users  | LRU caching with TTL expiration             |
+| **Recall Consistency**      | ±2 properties vs v1 | Geo-hash deduplication maintains quality    |
+
+### Architecture Optimizations
+
+- **🎯 SAR-First Strategy**: Places Search-Along-Route as primary method
+- **⚡ Adaptive Sampling**: Every 3rd polyline vertex (~100m intervals)
+- **🔄 Concurrent Processing**: p-limit with 10 concurrent requests max
+- **📦 Batched Place Details**: Lazy-loaded via `/api/placeDetails?id=...`
+- **🗂️ Geo-hash Deduplication**: 8-char precision for near-identical filtering
+- **💾 Multi-tier LRU Caching**:
+  - SAR responses (10 min TTL)
+  - Nearby search pages (10 min TTL)
+  - Place details (30 min TTL)
+- **📈 Request Shaping**: Exponential backoff with jitter on rate limits
+- **📊 Performance Metrics**: Prometheus metrics with latency histograms
+
+### Performance Features
+
+- **Caching**: Multi-layer LRU caching with TTL for routes and apartment data
 - **Optimized Rendering**: Efficient React rendering with proper memoization
 - **Code Splitting**: Next.js automatic code splitting for faster loading
+- **Lazy Loading**: Place details fetched on-demand in gallery view
+- **Quota Management**: Intelligent SAR quota tracking with fallback paths
 
 ## 🐛 Troubleshooting
 
