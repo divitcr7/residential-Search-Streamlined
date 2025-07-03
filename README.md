@@ -11,11 +11,12 @@
 
 Property Finder is an innovative web application that helps users discover apartments along their daily commute routes. Whether you drive, take transit, bike, or walk to work, our platform finds housing options within 1-3 miles of your route, making your daily journey convenient and efficient.
 
-## Featured Images
+# Featured Images
+### SEARCH A DESTINATION WITH AN INPUT ( START & END ) & TYPE OF COMMUTE YOU DAILY USE
 <img width="1789" alt="image" src="https://github.com/user-attachments/assets/e2a046e2-b0b4-4407-b17e-0a796b397dbc" />
-
-<img width="1800" alt="Screenshot 2025-07-03 at 9 58 24 AM" src="https://github.com/user-attachments/assets/3b5d82be-cdd5-4551-8ae5-0f9ab97e0f78" />
-
+### YOU SELECT A TRANSIT OPTION ( SELECT A ROUTE THAT YOU DAILY USE & WANT TO GET APARTMENTS BASED ON THAT ROUTE )
+<img width="1800" alt="Screenshot 2025-07-03 at 9 58 24 AM" src="https://github.com/user-attachments/assets/2b2adcc4-66b8-49a3-af5c-d88267948588" />
+### NOW THE ROUTE THAT GETS SELECTED, YOU CAN SEE FROM THAT PARTICULAR ROAD ALL THE APARTMENETS WITHIN 1, 2, 3 MILE RADIUS, THIS ENABLES YOU TO SELECT A GOOD APARTMENT BASED ON YOUR NEEDS & CLOSER TO THE MAIN ROAD TO USE THE COMMUTE YOU GENERALLY USE
 <img width="1585" alt="Screenshot 2025-07-03 at 9 58 55 AM" src="https://github.com/user-attachments/assets/137f94f7-c33c-4c8a-b857-6cbcd75b49b3" />
 
 
