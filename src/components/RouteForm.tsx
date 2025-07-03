@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { loadGoogleMaps, HOUSTON_CENTER } from "@/lib/maps";
 import { cn } from "@/lib/utils";
-import type { TravelMode, RouteFormData } from "@/types";
+import type { TravelMode, RouteFormData, DistanceBucket } from "@/types";
 
 interface RouteFormProps {
   onSubmit: (data: RouteFormData) => void;
@@ -35,6 +35,7 @@ export function RouteForm({
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
   const [travelMode, setTravelMode] = useState<TravelMode>("DRIVE");
+  const [maxDistance, setMaxDistance] = useState<DistanceBucket>("≤2mi");
   const [isGoogleMapsLoaded, setIsGoogleMapsLoaded] = useState(false);
 
   const originInputRef = useRef<HTMLInputElement>(null);
@@ -141,6 +142,7 @@ export function RouteForm({
         origin: origin.trim(),
         destination: destination.trim(),
         travelMode,
+        maxDistance,
       });
     }
   };
@@ -186,6 +188,39 @@ export function RouteForm({
                   className="pl-11 bg-background/60 backdrop-blur-sm border-white/20"
                 />
               </div>
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-foreground">
+                Max Distance from Route
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {(["≤1mi", "≤2mi", "≤3mi"] as DistanceBucket[]).map(
+                  (distance) => (
+                    <button
+                      key={distance}
+                      type="button"
+                      onClick={() => setMaxDistance(distance)}
+                      className={cn(
+                        "flex items-center justify-center gap-2 p-3 rounded-lg border transition-all duration-120 hover:scale-105 active:scale-95 backdrop-blur-sm",
+                        maxDistance === distance
+                          ? "bg-accent-teal text-charcoal border-accent-teal shadow-lg"
+                          : "bg-background/60 border-white/20 hover:bg-background/70 hover:text-accent-foreground"
+                      )}
+                    >
+                      <span className="text-sm font-semibold">{distance}</span>
+                    </button>
+                  )
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {maxDistance === "≤1mi" &&
+                  "Comprehensive search • Every apartment within 1 mile"}
+                {maxDistance === "≤2mi" &&
+                  "Ultra-dense search • Every apartment within 2 miles"}
+                {maxDistance === "≤3mi" &&
+                  "Maximum coverage • Every single apartment within 3 miles"}
+              </p>
             </div>
 
             <div className="space-y-3">

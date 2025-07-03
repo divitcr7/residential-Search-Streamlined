@@ -49,6 +49,7 @@ export interface RouteFormData {
   origin: string;
   destination: string;
   travelMode: TravelMode;
+  maxDistance: DistanceBucket;
 }
 
 export interface MapRef {

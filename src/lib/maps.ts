@@ -44,7 +44,7 @@ export async function computeRoute(
 
 export async function searchApartmentsAlongRoute(
   polyline: string,
-  maxResultCount = 60
+  maxResultCount = 500 // Increased for comprehensive coverage
 ): Promise<PlaceDetails[]> {
   const response = await fetch("/api/search-along-route", {
     method: "POST",

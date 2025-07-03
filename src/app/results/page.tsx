@@ -131,15 +131,17 @@ function ResultsContent() {
 
   if (!origin || !destination) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-          <h2 className="text-xl font-semibold mb-2">Invalid Search</h2>
-          <p className="text-muted-foreground mb-4">
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="text-center max-w-md">
+          <AlertCircle className="mx-auto h-16 w-16 text-muted-foreground mb-6" />
+          <h2 className="text-2xl font-bold mb-3">Invalid Search</h2>
+          <p className="text-muted-foreground mb-6 leading-relaxed">
             Origin and destination are required to show results.
           </p>
           <Link href="/">
-            <Button>Back to Search</Button>
+            <Button size="lg" className="px-8">
+              Back to Search
+            </Button>
           </Link>
         </div>
       </div>
@@ -148,21 +150,21 @@ function ResultsContent() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
-        <div className="container mx-auto px-4 py-3">
+      {/* Enhanced Header */}
+      <header className="border-b border-border bg-background/95 backdrop-blur-xl supports-[backdrop-filter]:bg-background/80 sticky top-0 z-40 shadow-sm">
+        <div className="container mx-auto px-4 py-4">
           <div className="flex items-center gap-4">
             <Link href="/">
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" className="hover:bg-accent">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back
               </Button>
             </Link>
             <div className="flex-1 min-w-0">
-              <h1 className="text-lg font-semibold truncate">
+              <h1 className="text-xl font-bold truncate text-foreground">
                 {origin} → {destination}
               </h1>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground font-medium">
                 {travelMode.toLowerCase()} • {searchResult?.totalFound || 0}{" "}
                 apartments found
               </p>
@@ -171,108 +173,131 @@ function ResultsContent() {
         </div>
       </header>
 
-      <div className="container mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-120px)]">
+      <div className="container mx-auto px-4 py-8">
+        <div className="grid grid-cols-1 xl:grid-cols-5 gap-8 h-[calc(100vh-140px)]">
           {/* Left Sidebar - Route Options and Apartments */}
-          <div className="space-y-6 overflow-auto">
-            {/* Route Options (for multiple routes) */}
+          <div className="xl:col-span-2 space-y-6 overflow-auto pr-2">
+            {/* Route Options (for Transit mode with multiple routes) */}
             {searchResult?.routeOptions &&
+              travelMode === "TRANSIT" &&
               searchResult.routeOptions.length > 1 && (
-                <RouteOptions
-                  routes={searchResult.routeOptions}
-                  selectedRouteIndex={selectedRouteIndex}
-                  onRouteSelect={handleRouteSelect}
-                  isLoading={isLoading}
-                />
+                <div className="bg-card rounded-xl p-6 border border-border/50 shadow-soft">
+                  <RouteOptions
+                    routes={searchResult.routeOptions}
+                    selectedRouteIndex={selectedRouteIndex}
+                    onRouteSelect={handleRouteSelect}
+                    isLoading={isLoading}
+                  />
+                </div>
               )}
 
             {/* Filter Chips */}
             {searchResult && !isLoading && (
-              <FilterChips
-                selectedBucket={selectedBucket}
-                onBucketChange={setSelectedBucket}
-                selectedTransitFilter={selectedTransitFilter}
-                onTransitFilterChange={setSelectedTransitFilter}
-                counts={{
-                  "≤1mi": searchResult.apartments["≤1mi"]?.length || 0,
-                  "≤2mi": searchResult.apartments["≤2mi"]?.length || 0,
-                  "≤3mi": searchResult.apartments["≤3mi"]?.length || 0,
-                }}
-                transitCounts={transitCounts}
-              />
+              <div className="bg-card rounded-xl p-6 border border-border/50 shadow-soft">
+                <FilterChips
+                  selectedBucket={selectedBucket}
+                  onBucketChange={setSelectedBucket}
+                  selectedTransitFilter={selectedTransitFilter}
+                  onTransitFilterChange={setSelectedTransitFilter}
+                  counts={{
+                    "≤1mi": searchResult.apartments["≤1mi"]?.length || 0,
+                    "≤2mi": searchResult.apartments["≤2mi"]?.length || 0,
+                    "≤3mi": searchResult.apartments["≤3mi"]?.length || 0,
+                  }}
+                  transitCounts={transitCounts}
+                />
+              </div>
             )}
 
             {/* Apartment Listings */}
-            <div className="space-y-4">
+            <div className="space-y-5">
               {isLoading ? (
                 // Loading skeletons
-                Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className="h-48 w-full" />
-                ))
+                <div className="space-y-4">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-56 w-full rounded-xl" />
+                  ))}
+                </div>
               ) : error ? (
                 // Error state
-                <div className="text-center py-12">
-                  <AlertCircle className="mx-auto h-12 w-12 text-destructive mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">
+                <div className="text-center py-16 bg-card rounded-xl border border-border/50">
+                  <AlertCircle className="mx-auto h-16 w-16 text-destructive mb-6" />
+                  <h3 className="text-xl font-bold mb-3">
                     Error Loading Results
                   </h3>
-                  <p className="text-muted-foreground mb-4">{error}</p>
+                  <p className="text-muted-foreground mb-6 max-w-md mx-auto leading-relaxed">
+                    {error}
+                  </p>
                   <Button
                     onClick={() => window.location.reload()}
                     variant="outline"
+                    size="lg"
                   >
                     Try Again
                   </Button>
                 </div>
               ) : filteredApartments.length === 0 ? (
                 // No results
-                <div className="text-center py-12">
-                  <MapPin className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">
+                <div className="text-center py-16 bg-card rounded-xl border border-border/50">
+                  <MapPin className="mx-auto h-16 w-16 text-muted-foreground mb-6" />
+                  <h3 className="text-xl font-bold mb-3">
                     No Apartments Found
                   </h3>
-                  <p className="text-muted-foreground">
-                    Try adjusting your filters or search area.
+                  <p className="text-muted-foreground max-w-md mx-auto leading-relaxed">
+                    Try adjusting your filters or search area to find more
+                    options.
                   </p>
                 </div>
               ) : (
                 // Apartment cards
-                <AnimatePresence mode="popLayout">
-                  {filteredApartments.map((apartment, index) => (
-                    <motion.div
-                      key={apartment.place.place_id}
-                      layout
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -20 }}
-                      transition={{ delay: index * 0.1 }}
-                      className={cn(
-                        "transition-all duration-200",
-                        highlightedApartmentId === apartment.place.place_id &&
-                          "ring-2 ring-accent-teal scale-[1.02]"
-                      )}
-                      onMouseEnter={() =>
-                        setHighlightedApartmentId(apartment.place.place_id)
-                      }
-                      onMouseLeave={() => setHighlightedApartmentId(null)}
-                    >
-                      <ApartmentCard apartment={apartment} />
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
+                <div className="space-y-5">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-bold text-foreground">
+                      Apartments {selectedBucket}
+                    </h2>
+                    <span className="text-sm text-muted-foreground bg-muted/50 px-3 py-1 rounded-full">
+                      {filteredApartments.length} found
+                    </span>
+                  </div>
+                  <AnimatePresence mode="popLayout">
+                    {filteredApartments.map((apartment, index) => (
+                      <motion.div
+                        key={apartment.place.place_id}
+                        layout
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        transition={{ delay: index * 0.05, duration: 0.3 }}
+                        className={cn(
+                          "transition-all duration-200",
+                          highlightedApartmentId === apartment.place.place_id &&
+                            "ring-2 ring-accent-teal/50 scale-[1.02]"
+                        )}
+                        onMouseEnter={() =>
+                          setHighlightedApartmentId(apartment.place.place_id)
+                        }
+                        onMouseLeave={() => setHighlightedApartmentId(null)}
+                      >
+                        <ApartmentCard apartment={apartment} />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
               )}
             </div>
           </div>
 
           {/* Right Side - Map */}
-          <div className="relative rounded-lg overflow-hidden border border-border">
-            <Map
-              route={searchResult?.selectedRoute}
-              apartments={apartmentMarkers}
-              highlightedApartmentId={highlightedApartmentId}
-              onApartmentMarkerClick={setHighlightedApartmentId}
-              isLoading={isLoading}
-            />
+          <div className="xl:col-span-3 relative">
+            <div className="sticky top-8 rounded-xl overflow-hidden border border-border/50 shadow-elevated bg-card h-[calc(100vh-180px)]">
+              <Map
+                route={searchResult?.selectedRoute}
+                apartments={apartmentMarkers}
+                highlightedApartmentId={highlightedApartmentId}
+                onApartmentMarkerClick={setHighlightedApartmentId}
+                isLoading={isLoading}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -285,8 +310,8 @@ export default function ResultsPage() {
     <Suspense
       fallback={
         <div className="min-h-screen bg-background flex items-center justify-center">
-          <div className="flex items-center gap-2">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-accent-teal border-t-transparent" />
+          <div className="flex items-center gap-3">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent-teal border-t-transparent" />
             <span className="text-sm font-medium">Loading results...</span>
           </div>
         </div>

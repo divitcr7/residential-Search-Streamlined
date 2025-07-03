@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Image from "next/image";
 import { motion } from "framer-motion";
 import { Star, ExternalLink, MapPin, Bus, Train, Route } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -62,7 +63,7 @@ function getTransitBadgeColor(type: string): string {
 }
 
 export function ApartmentCard({ apartment, className }: ApartmentCardProps) {
-  const { place, distanceToRoute, bucket, nearestTransitStep } = apartment;
+  const { place, distanceToRoute, bucket } = apartment;
   const bucketColor = getBucketColor(bucket);
 
   const photoUrl = place.photos?.[0]?.photo_reference
@@ -80,41 +81,45 @@ export function ApartmentCard({ apartment, className }: ApartmentCardProps) {
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, ease: [0.19, 1, 0.22, 1] }}
-      whileHover={{ scale: 1.02 }}
+      transition={{ duration: 0.3, ease: [0.19, 1, 0.22, 1] }}
+      whileHover={{ y: -4 }}
       className={cn("cursor-pointer", className)}
     >
       <Card
-        className="overflow-hidden group transition-all duration-120 hover:shadow-xl border-l-4"
+        className="overflow-hidden group bg-card border-border/50 shadow-elevated hover:shadow-floating transition-all duration-300 border-l-4 hover:border-l-accent-teal"
         style={{ borderLeftColor: bucketColor }}
       >
         <div className="relative">
           {photoUrl ? (
-            <div className="aspect-video overflow-hidden">
-              <img
+            <div className="aspect-[16/10] overflow-hidden bg-muted">
+              <Image
                 src={photoUrl}
                 alt={place.name}
-                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                width={400}
+                height={250}
+                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                 loading="lazy"
               />
             </div>
           ) : (
-            <div className="aspect-video bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-              <MapPin className="h-12 w-12 text-gray-400" />
+            <div className="aspect-[16/10] bg-gradient-to-br from-muted to-muted/60 flex items-center justify-center">
+              <MapPin className="h-12 w-12 text-muted-foreground/50" />
             </div>
           )}
 
+          {/* Distance Badge */}
           <div
-            className="absolute top-3 left-3 px-2 py-1 rounded-full text-xs font-medium text-white shadow-lg"
+            className="absolute top-3 left-3 px-3 py-1.5 rounded-full text-xs font-semibold text-white shadow-lg backdrop-blur-sm"
             style={{ backgroundColor: bucketColor }}
           >
-            ≤{bucket} mi
+            {formatDistance(distanceToRoute)}
           </div>
 
+          {/* Rating Badge */}
           {place.rating && (
-            <div className="absolute top-3 right-3 flex items-center gap-1 bg-black/70 backdrop-blur-sm rounded-full px-2 py-1">
-              <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-              <span className="text-xs font-medium text-white">
+            <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-black/80 backdrop-blur-sm rounded-full px-3 py-1.5 shadow-lg">
+              <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
+              <span className="text-xs font-semibold text-white">
                 {place.rating.toFixed(1)}
               </span>
               {place.user_ratings_total && (
@@ -126,32 +131,35 @@ export function ApartmentCard({ apartment, className }: ApartmentCardProps) {
           )}
         </div>
 
-        <CardContent className="p-4">
-          <div className="space-y-3">
-            <div>
-              <h3 className="font-semibold text-lg line-clamp-1 group-hover:text-accent-teal transition-colors">
+        <CardContent className="p-5">
+          <div className="space-y-4">
+            {/* Title and Address */}
+            <div className="space-y-2">
+              <h3 className="font-bold text-lg text-foreground leading-tight line-clamp-1 group-hover:text-accent-teal transition-colors duration-200">
                 {place.name}
               </h3>
-              <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
+              <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
                 {place.vicinity || place.formatted_address}
               </p>
             </div>
 
-            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <div className="flex items-center gap-1">
-                <MapPin className="h-4 w-4" />
-                <span>{formatDistance(distanceToRoute)}</span>
-              </div>
+            {/* Distance Info */}
+            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+              <MapPin className="h-4 w-4 text-accent-teal" />
+              <span className="font-medium">
+                {formatDistance(distanceToRoute)} from route
+              </span>
             </div>
 
+            {/* Action Button */}
             <Button
               variant="outline"
               size="sm"
-              className="w-full group-hover:bg-accent-teal group-hover:text-charcoal group-hover:border-accent-teal transition-colors"
+              className="w-full bg-background hover:bg-accent-teal hover:text-white hover:border-accent-teal transition-all duration-200 font-medium"
               onClick={handleViewOnMaps}
             >
               <ExternalLink className="h-4 w-4 mr-2" />
-              View on Maps
+              View on Google Maps
             </Button>
           </div>
         </CardContent>
