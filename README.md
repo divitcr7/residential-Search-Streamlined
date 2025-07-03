@@ -11,6 +11,11 @@
 
 Property Finder is an innovative web application that helps users discover apartments along their daily commute routes. Whether you drive, take transit, bike, or walk to work, our platform finds housing options within 1-3 miles of your route, making your daily journey convenient and efficient.
 
+## Featured Images
+<img width="1789" alt="image" src="https://github.com/user-attachments/assets/e2a046e2-b0b4-4407-b17e-0a796b397dbc" />
+<img width="1799" alt="Screenshot 2025-07-03 at 9 58 27 AM" src="https://github.com/user-<img width="1585" alt="Screenshot 2025-07-03 at 9 58 55 AM" src="https://github.com/user-attachments/assets/144b4edf-85da-4ef9-9079-60761dbe7638" />
+attachments/assets/0da852d0-2fad-4cb1-aec7-bf62316678cb" />
+
 ### ✨ Key Features
 
 - **🗺️ Multi-Modal Route Planning** - Support for driving, transit, biking, and walking routes
