@@ -44,9 +44,9 @@ const nearbySearchCache = {
 };
 
 // Performance constants
-const MAX_CONCURRENT_REQUESTS = 5; // Increased for better coverage
-const MAX_SAR_CALLS_PER_HOUR = 65;
-const GEOHASH_PRECISION = 3; // Simplified precision
+const MAX_CONCURRENT_REQUESTS = 7; // Maximum for comprehensive search
+const MAX_SAR_CALLS_PER_HOUR = 200; // Increased for comprehensive searches
+const GEOHASH_PRECISION = 5; // Higher precision for more apartment variety
 const SAMPLE_INTERVAL = 2; // Much more frequent sampling
 const KEYWORDS = ["apartment", "apartment complex", "condo", "housing"]; // More comprehensive keywords
 
@@ -93,7 +93,8 @@ export async function getRouteAndApartments(
   origin: string,
   destination: string,
   travelMode: TravelMode,
-  selectedRouteIndex?: number
+  selectedRouteIndex?: number,
+  maxDistance: DistanceBucket = "≤3mi"
 ): Promise<SearchResult> {
   const timerId = `search_${Date.now()}`;
   metrics.startTimer(timerId);
@@ -114,7 +115,10 @@ export async function getRouteAndApartments(
     const route = routeResult.routes[selectedRouteIndex || 0];
 
     // Search for apartments with performance optimizations
-    const lightApartments = await searchApartmentsPerformant(route);
+    const lightApartments = await searchApartmentsPerformant(
+      route,
+      maxDistance
+    );
 
     // Process distances and create apartment listings (light objects)
     const apartmentListings = await processApartmentDistancesLight(
@@ -146,7 +150,8 @@ export async function getRouteAndApartments(
  * Performance-optimized apartment search with SAR primary and adaptive fallback
  */
 async function searchApartmentsPerformant(
-  route: RouteOption
+  route: RouteOption,
+  maxDistance: DistanceBucket = "≤3mi"
 ): Promise<LightApartment[]> {
   const cacheKey = generateCacheKey(
     "apartments_perf",
@@ -174,26 +179,27 @@ async function searchApartmentsPerformant(
     // Primary path: Search-Along-Route (SAR)
     if (sarCallsThisHour < MAX_SAR_CALLS_PER_HOUR) {
       console.log("Attempting Search-Along-Route (SAR)...");
-      apartments = await searchAlongRoute(route);
+      apartments = await searchAlongRoute(route, maxDistance);
       sarCallsThisHour++;
 
-      if (apartments.length >= 30) {
-        console.log(`SAR returned ${apartments.length} apartments`);
-        sarCache.set(cacheKey, apartments);
-        metrics.recordApartmentsFound("sar", apartments.length);
-        return apartments;
-      }
+      // Use SAR results regardless of count for comprehensive coverage
+      console.log(`SAR returned ${apartments.length} apartments`);
+      sarCache.set(cacheKey, apartments);
+      metrics.recordApartmentsFound("sar", apartments.length);
+      return apartments;
     }
 
     // Fallback: Adaptive sampler with concurrency control
-    console.log("Using adaptive sampler fallback...");
-    apartments = await adaptiveSampler(route);
+    console.log(`Using adaptive sampler fallback for ${maxDistance}...`);
+    apartments = await adaptiveSampler(route, maxDistance);
   } catch (error) {
     console.warn("SAR failed, using adaptive sampler:", error);
-    apartments = await adaptiveSampler(route);
+    apartments = await adaptiveSampler(route, maxDistance);
   }
 
-  console.log(`🏠 Found ${apartments.length} apartments along route`);
+  console.log(
+    `🏠 Found ${apartments.length} total apartments along route (after deduplication)`
+  );
   sarCache.set(cacheKey, apartments);
   return apartments;
 }
@@ -201,50 +207,121 @@ async function searchApartmentsPerformant(
 /**
  * Search-Along-Route using Places API (when available)
  */
-async function searchAlongRoute(route: RouteOption): Promise<LightApartment[]> {
+async function searchAlongRoute(
+  route: RouteOption,
+  maxDistance: DistanceBucket = "≤3mi"
+): Promise<LightApartment[]> {
   // For now, skip SAR and use adaptive sampler directly
   // since Google Places Search-Along-Route is in limited preview
   console.log("SAR not available, using adaptive sampler");
-  return adaptiveSampler(route);
+  return adaptiveSampler(route, maxDistance);
+}
+
+/**
+ * Get search configuration based on max distance preference
+ */
+function getSearchConfig(maxDistance: DistanceBucket) {
+  switch (maxDistance) {
+    case "≤1mi":
+      return {
+        sampleInterval: 3, // Denser sampling for better coverage
+        distanceInterval: 300, // Every 300m
+        pointSpacing: 150, // Tighter spacing
+        searchRadius: 2500, // Increased radius
+        routeFilter: 2.0, // Within 2km of route (≈1.2mi)
+        maxPoints: Infinity, // NO LIMITS - find every apartment!
+        keywords: ["apartment", "apartment complex"], // More keywords
+      };
+    case "≤2mi":
+      return {
+        sampleInterval: 2, // Dense sampling
+        distanceInterval: 250, // Every 250m
+        pointSpacing: 125, // Tight spacing
+        searchRadius: 3000, // Full radius
+        routeFilter: 3.5, // Within 3.5km of route (≈2.2mi)
+        maxPoints: Infinity, // NO LIMITS - search everything!
+        keywords: ["apartment", "apartment complex", "condo", "housing"], // All keywords
+      };
+    case "≤3mi":
+      return {
+        sampleInterval: 2, // Maximum density sampling
+        distanceInterval: 200, // Every 200m for ultra-dense coverage
+        pointSpacing: 100, // Ultra-tight spacing
+        searchRadius: 3500, // Increased radius for maximum reach
+        routeFilter: 5.0, // Within 5km of route (≈3.1mi)
+        maxPoints: Infinity, // UNLIMITED - every single point!
+        keywords: [
+          "apartment",
+          "apartment complex",
+          "condo",
+          "housing",
+          "loft",
+          "homes",
+          "living",
+          "manor",
+          "court",
+          "plaza",
+          "place",
+          "residence",
+        ], // ALL keywords for comprehensive coverage
+      };
+    default:
+      return getSearchConfig("≤2mi"); // Default fallback
+  }
 }
 
 /**
  * Adaptive sampler with concurrency control and early termination
  */
-async function adaptiveSampler(route: RouteOption): Promise<LightApartment[]> {
+async function adaptiveSampler(
+  route: RouteOption,
+  maxDistance: DistanceBucket = "≤3mi"
+): Promise<LightApartment[]> {
   const decodedPolyline = decodePolyline(route.overview_polyline.points);
   const routePoints = decodedPolyline.map(([lat, lng]) => ({ lat, lng }));
 
-  // Use multiple sampling strategies for comprehensive coverage
-  const intervalPoints = sampleRoutePoints(routePoints, SAMPLE_INTERVAL);
-  const distancePoints = sampleRouteByDistance(routePoints, 400); // Every 400m
+  // Adaptive search strategy based on distance preference
+  const searchConfig = getSearchConfig(maxDistance);
+
+  // Use multiple sampling strategies based on distance preference
+  const intervalPoints = sampleRoutePoints(
+    routePoints,
+    searchConfig.sampleInterval
+  );
+  const distancePoints = sampleRouteByDistance(
+    routePoints,
+    searchConfig.distanceInterval
+  );
 
   // Combine and deduplicate sampling points
-  const allSamplePoints = [...intervalPoints, ...distancePoints];
-  const uniquePoints = deduplicatePoints(allSamplePoints, 300); // Remove points within 300m
+  const combinedPoints = [...intervalPoints, ...distancePoints];
+  const uniquePoints = deduplicatePoints(
+    combinedPoints,
+    searchConfig.pointSpacing
+  );
 
   console.log(
-    `🗺️ Sampling ${uniquePoints.length} points distributed along entire route`
+    `🗺️ ${maxDistance} search: ${uniquePoints.length} points, ${searchConfig.searchRadius}m radius`
   );
 
   const allApartments: LightApartment[] = [];
   const seenGeohashes = new Set<string>();
 
-  // Process more points for comprehensive route coverage
-  const limitedSamplePoints = uniquePoints.slice(0, 50);
+  // Use ALL points for maximum coverage - no artificial limits!
+  const searchPoints = uniquePoints; // Search every single point!
 
   // Create route line for filtering apartments
   const routeLineCoords = routePoints.map((p) => [p.lng, p.lat]);
   const routeLine = lineString(routeLineCoords);
 
-  for (const searchPoint of limitedSamplePoints) {
-    // Early termination if we have enough apartments
-    if (allApartments.length >= 60) break;
+  for (const searchPoint of searchPoints) {
+    // No early termination - find ALL apartments!
 
     try {
       const apartments = await searchNearPointConcurrent(
         searchPoint.lat,
-        searchPoint.lng
+        searchPoint.lng,
+        searchConfig
       );
 
       // Filter apartments to only those actually close to the route
@@ -254,7 +331,7 @@ async function adaptiveSampler(route: RouteOption): Promise<LightApartment[]> {
           units: "kilometers",
         });
         const distanceToRoute = nearestPoint.properties.dist || 0;
-        return distanceToRoute <= 4.0; // Within 4km of route (generous for urban areas)
+        return distanceToRoute <= searchConfig.routeFilter; // Distance based on user preference
       });
 
       console.log(
@@ -263,10 +340,7 @@ async function adaptiveSampler(route: RouteOption): Promise<LightApartment[]> {
 
       // Add route-filtered apartments with geohash deduplication
       for (const apartment of routeFilteredApartments) {
-        if (
-          !seenGeohashes.has(apartment.geohash) &&
-          allApartments.length < 60
-        ) {
+        if (!seenGeohashes.has(apartment.geohash)) {
           seenGeohashes.add(apartment.geohash);
           allApartments.push(apartment);
         }
@@ -280,6 +354,9 @@ async function adaptiveSampler(route: RouteOption): Promise<LightApartment[]> {
     }
   }
 
+  console.log(
+    `🔍 Total apartments found: ${allApartments.length} (before final deduplication)`
+  );
   metrics.recordApartmentsFound("nearby", allApartments.length);
   return allApartments;
 }
@@ -289,7 +366,8 @@ async function adaptiveSampler(route: RouteOption): Promise<LightApartment[]> {
  */
 async function searchNearPointConcurrent(
   lat: number,
-  lng: number
+  lng: number,
+  searchConfig: ReturnType<typeof getSearchConfig>
 ): Promise<LightApartment[]> {
   const cacheKey = generateCacheKey("nearby", lat.toFixed(4), lng.toFixed(4));
 
@@ -305,27 +383,34 @@ async function searchNearPointConcurrent(
   // Launch searches for keywords sequentially to avoid rate limits
   const apartments: LightApartment[] = [];
 
-  for (const keyword of KEYWORDS) {
+  for (const keyword of searchConfig.keywords) {
     try {
-      const results = await performSingleSearch(lat, lng, keyword);
+      const results = await performSingleSearch(
+        lat,
+        lng,
+        keyword,
+        searchConfig.searchRadius
+      );
       apartments.push(...results);
 
-      // Break if we have enough results for this point
-      if (apartments.length >= 15) break;
+      // Continue searching all keywords for comprehensive coverage
     } catch (error) {
       console.warn(`Search failed for keyword ${keyword}:`, error);
       continue;
     }
   }
 
-  // If we don't have many results, try a type-based search for lodging
-  if (apartments.length < 8) {
-    try {
-      const lodgingResults = await performTypeSearch(lat, lng, "lodging");
-      apartments.push(...lodgingResults);
-    } catch (error) {
-      console.warn(`Lodging search failed:`, error);
-    }
+  // Always try a type-based search for lodging for maximum coverage
+  try {
+    const lodgingResults = await performTypeSearch(
+      lat,
+      lng,
+      "lodging",
+      searchConfig.searchRadius
+    );
+    apartments.push(...lodgingResults);
+  } catch (error) {
+    console.warn(`Lodging search failed:`, error);
   }
 
   const deduped = deduplicateByGeohash(apartments);
@@ -341,13 +426,14 @@ async function performSingleSearch(
   lat: number,
   lng: number,
   keyword: string,
-  retryCount = 0
+  radius: number = 3000,
+  retryCount: number = 0
 ): Promise<LightApartment[]> {
   try {
     const url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json";
     const params = new URLSearchParams({
       location: `${lat},${lng}`,
-      radius: "3000", // Further increased radius for comprehensive coverage
+      radius: radius.toString(), // Use adaptive radius based on distance preference
       keyword,
       key: GOOGLE_MAPS_API_KEY,
     });
@@ -357,7 +443,7 @@ async function performSingleSearch(
     if (response.status === 429 && retryCount < 3) {
       // Rate limit hit, exponential backoff
       await exponentialBackoff(retryCount);
-      return performSingleSearch(lat, lng, keyword, retryCount + 1);
+      return performSingleSearch(lat, lng, keyword, radius, retryCount + 1);
     }
 
     if (!response.ok) {
@@ -369,7 +455,7 @@ async function performSingleSearch(
 
     if (data.status === "OVER_QUERY_LIMIT" && retryCount < 3) {
       await exponentialBackoff(retryCount);
-      return performSingleSearch(lat, lng, keyword, retryCount + 1);
+      return performSingleSearch(lat, lng, keyword, radius, retryCount + 1);
     }
 
     if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
@@ -406,13 +492,14 @@ async function performTypeSearch(
   lat: number,
   lng: number,
   type: string,
-  retryCount = 0
+  radius: number = 3000,
+  retryCount: number = 0
 ): Promise<LightApartment[]> {
   try {
     const url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json";
     const params = new URLSearchParams({
       location: `${lat},${lng}`,
-      radius: "2500",
+      radius: radius.toString(), // Use adaptive radius
       type,
       key: GOOGLE_MAPS_API_KEY,
     });
@@ -421,7 +508,7 @@ async function performTypeSearch(
 
     if (response.status === 429 && retryCount < 3) {
       await exponentialBackoff(retryCount);
-      return performTypeSearch(lat, lng, type, retryCount + 1);
+      return performTypeSearch(lat, lng, type, radius, retryCount + 1);
     }
 
     if (!response.ok) {

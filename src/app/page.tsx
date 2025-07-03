@@ -23,7 +23,9 @@ export default function HomePage() {
       const result = await getRouteAndApartments(
         data.origin,
         data.destination,
-        data.travelMode
+        data.travelMode,
+        undefined,
+        data.maxDistance
       );
 
       // Store result in sessionStorage for the results page
