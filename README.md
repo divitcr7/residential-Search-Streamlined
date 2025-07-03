@@ -13,8 +13,12 @@ Property Finder is an innovative web application that helps users discover apart
 
 ## Featured Images
 <img width="1789" alt="image" src="https://github.com/user-attachments/assets/e2a046e2-b0b4-4407-b17e-0a796b397dbc" />
-<img width="1799" alt="Screenshot 2025-07-03 at 9 58 27 AM" src="https://github.com/user-<img width="1585" alt="Screenshot 2025-07-03 at 9 58 55 AM" src="https://github.com/user-attachments/assets/144b4edf-85da-4ef9-9079-60761dbe7638" />
-attachments/assets/0da852d0-2fad-4cb1-aec7-bf62316678cb" />
+
+<img width="1799" alt="Screenshot 2025-07-03 at 9 58 27 AM" src="https://github.com/user-attachments/assets/00eb0eec-6060-4e38-8f99-6d1f952b39ed" />
+
+<img width="1585" alt="Screenshot 2025-07-03 at 9 58 55 AM" src="https://github.com/user-attachments/assets/137f94f7-c33c-4c8a-b857-6cbcd75b49b3" />
+
+
 
 ### ✨ Key Features
 
