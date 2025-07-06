@@ -1,12 +1,8 @@
 "use client";
 
-import React, { useRef, useEffect } from "react";
-import {
-  loadGoogleMaps,
-  DEFAULT_MAP_OPTIONS,
-  HOUSTON_CENTER,
-  decodePolyline,
-} from "@/lib/maps";
+import React, { useRef, useEffect, useState } from "react";
+import maplibregl from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
 import type { RouteOption, ApartmentListing } from "@/types";
 
 interface ApartmentMarker {
@@ -39,6 +35,96 @@ function getBucketColor(bucket: string): string {
   }
 }
 
+/**
+ * Decode polyline to coordinates
+ */
+function decodePolyline(encoded: string): [number, number][] {
+  const poly: [number, number][] = [];
+  let index = 0;
+  const len = encoded.length;
+  let lat = 0;
+  let lng = 0;
+
+  while (index < len) {
+    let b: number;
+    let shift = 0;
+    let result = 0;
+
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+
+    const dlat = result & 1 ? ~(result >> 1) : result >> 1;
+    lat += dlat;
+
+    shift = 0;
+    result = 0;
+
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+
+    const dlng = result & 1 ? ~(result >> 1) : result >> 1;
+    lng += dlng;
+
+    poly.push([lng / 1e5, lat / 1e5]);
+  }
+
+  return poly;
+}
+
+const HOUSTON_CENTER: [number, number] = [-95.3698, 29.7604];
+
+// Map style using OpenStreetMap
+const MAP_STYLE = {
+  version: 8,
+  sources: {
+    "osm-tiles": {
+      type: "raster",
+      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+      tileSize: 256,
+      attribution: "&copy; OpenStreetMap contributors",
+    },
+  },
+  layers: [
+    {
+      id: "osm",
+      type: "raster",
+      source: "osm-tiles",
+      minzoom: 0,
+      maxzoom: 19,
+    },
+  ],
+} as maplibregl.StyleSpecification;
+
+// Dark theme map style
+const DARK_MAP_STYLE = {
+  version: 8,
+  sources: {
+    "osm-tiles": {
+      type: "raster",
+      tiles: [
+        "https://cartodb-basemaps-a.global.ssl.fastly.net/dark_all/{z}/{x}/{y}.png",
+      ],
+      tileSize: 256,
+      attribution: "&copy; OpenStreetMap contributors, &copy; CartoDB",
+    },
+  },
+  layers: [
+    {
+      id: "osm-dark",
+      type: "raster",
+      source: "osm-tiles",
+      minzoom: 0,
+      maxzoom: 19,
+    },
+  ],
+} as maplibregl.StyleSpecification;
+
 export function Map({
   route,
   apartments = [],
@@ -49,308 +135,253 @@ export function Map({
   hideControls = false,
 }: MapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
-  const googleMapRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<globalThis.Map<string, google.maps.Marker>>(
-    new globalThis.Map()
+  const mapInstanceRef = useRef<maplibregl.Map | null>(null);
+  const markersRef = useRef<globalThis.Map<string, maplibregl.Marker>>(
+    new globalThis.Map<string, maplibregl.Marker>()
   );
-  const polylineRef = useRef<google.maps.Polyline | null>(null);
+  const [mapLoaded, setMapLoaded] = useState(false);
 
-  // Initialize Google Maps (try real maps first, fallback if needed)
+  // Initialize MapLibre GL
   useEffect(() => {
-    const initMap = async () => {
-      if (!mapRef.current) return;
+    if (!mapRef.current) return;
 
-      try {
-        console.log("Loading Google Maps for map display...");
-        await loadGoogleMaps();
+    try {
+      console.log("Initializing MapLibre GL map...");
 
-        const mapOptions = {
-          ...DEFAULT_MAP_OPTIONS,
-          center: HOUSTON_CENTER,
-          zoom: route ? 12 : 11,
-          backgroundColor: "#1a1a1a",
-          // Disable controls when hideControls is true
-          zoomControl: !hideControls,
-          mapTypeControl: false,
-          scaleControl: false,
-          streetViewControl: false,
-          rotateControl: false,
-          fullscreenControl: false,
-          gestureHandling: hideControls ? "none" : "auto",
-          draggable: !hideControls,
-          scrollwheel: !hideControls,
-          disableDoubleClickZoom: hideControls,
-        };
+      const map = new maplibregl.Map({
+        container: mapRef.current,
+        style: DARK_MAP_STYLE,
+        center: HOUSTON_CENTER,
+        zoom: route ? 10 : 11,
+        interactive: !hideControls,
+        attributionControl: { compact: false },
+      });
 
-        console.log("Creating Google Map...");
-        googleMapRef.current = new google.maps.Map(mapRef.current, mapOptions);
-
-        // Add Google attribution
-        const attribution = document.createElement("div");
-        attribution.innerHTML = "© Google | Map data © 2025 Google";
-        attribution.style.cssText = `
-          position: absolute;
-          bottom: 8px;
-          right: 8px;
-          background: rgba(0,0,0,0.7);
-          color: white;
-          padding: 4px 8px;
-          border-radius: 4px;
-          font-size: 11px;
-          z-index: 1000;
-          pointer-events: none;
-        `;
-        mapRef.current.appendChild(attribution);
-
-        console.log("Google Maps initialized successfully");
-      } catch (error) {
-        console.error("Failed to initialize Google Maps:", error);
-
-        // Show dark fallback only if Google Maps fails
-        if (mapRef.current) {
-          mapRef.current.style.backgroundColor = "#1a1a1a";
-          mapRef.current.style.backgroundImage = `
-            linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 25%, #1a1a1a 50%, #263c3f 75%, #1a1a1a 100%),
-            radial-gradient(circle at 30% 40%, rgba(116, 104, 85, 0.3) 0%, transparent 30%),
-            radial-gradient(circle at 70% 60%, rgba(23, 38, 60, 0.4) 0%, transparent 40%),
-            radial-gradient(circle at 20% 80%, rgba(38, 65, 79, 0.2) 0%, transparent 35%),
-            linear-gradient(45deg, transparent 30%, rgba(56, 65, 78, 0.1) 50%, transparent 70%),
-            linear-gradient(-45deg, transparent 40%, rgba(116, 104, 85, 0.05) 60%, transparent 80%)
-          `;
-
-          // Add Houston-like map features
-          mapRef.current.innerHTML = `
-            <!-- Water areas (Buffalo Bayou, etc) -->
-            <div style="
-              position: absolute;
-              top: 60%;
-              left: 10%;
-              width: 80%;
-              height: 8px;
-              background: #17263c;
-              border-radius: 20px;
-              opacity: 0.8;
-            "></div>
-            <div style="
-              position: absolute;
-              top: 40%;
-              left: 60%;
-              width: 35%;
-              height: 6px;
-              background: #17263c;
-              border-radius: 15px;
-              opacity: 0.6;
-              transform: rotate(-15deg);
-            "></div>
-            
-            <!-- Road network -->
-            <div style="
-              position: absolute;
-              top: 50%;
-              left: 0;
-              width: 100%;
-              height: 2px;
-              background: linear-gradient(90deg, transparent, #38414e, #38414e, transparent);
-              opacity: 0.8;
-            "></div>
-            <div style="
-              position: absolute;
-              top: 0;
-              left: 50%;
-              width: 2px;
-              height: 100%;
-              background: linear-gradient(180deg, transparent, #38414e, #38414e, transparent);
-              opacity: 0.8;
-            "></div>
-            <div style="
-              position: absolute;
-              top: 30%;
-              left: 20%;
-              width: 60%;
-              height: 1px;
-              background: linear-gradient(90deg, transparent, #746855, transparent);
-              opacity: 0.6;
-              transform: rotate(25deg);
-            "></div>
-            
-            <!-- Downtown area indicator -->
-            <div style="
-              position: absolute;
-              top: 45%;
-              left: 48%;
-              width: 8px;
-              height: 8px;
-              background: rgba(213, 149, 99, 0.4);
-              border-radius: 50%;
-              box-shadow: 0 0 20px rgba(213, 149, 99, 0.3);
-            "></div>
-          `;
-        }
+      if (!hideControls) {
+        map.addControl(new maplibregl.NavigationControl({}), "top-right");
+        map.addControl(
+          new maplibregl.ScaleControl({ unit: "metric" }),
+          "bottom-left"
+        );
       }
-    };
 
-    initMap();
+      map.on("load", () => {
+        console.log("MapLibre GL map loaded successfully");
+        setMapLoaded(true);
+      });
+
+      map.on("error", (e: any) => {
+        console.error("MapLibre GL error:", e);
+      });
+
+      mapInstanceRef.current = map;
+
+      return () => {
+        map.remove();
+        mapInstanceRef.current = null;
+      };
+    } catch (error) {
+      console.error("Failed to initialize MapLibre GL:", error);
+    }
   }, [route, hideControls]);
 
   // Update route polyline
   useEffect(() => {
-    if (!googleMapRef.current || !route) {
-      console.log("No map or route available for polyline");
-      return;
-    }
+    if (!mapInstanceRef.current || !route || !mapLoaded) return;
 
-    console.log("Drawing route polyline for route:", route.route_id);
-
-    // Clear existing polyline
-    if (polylineRef.current) {
-      polylineRef.current.setMap(null);
-    }
+    const map = mapInstanceRef.current;
 
     try {
-      // Decode the route polyline
-      const decodedPath = decodePolyline(route.overview_polyline.points);
-      console.log(`Decoded ${decodedPath.length} points for route`);
+      // Remove existing route layer if it exists
+      if (map.getLayer("route")) {
+        map.removeLayer("route");
+      }
+      if (map.getSource("route")) {
+        map.removeSource("route");
+      }
 
-      const polylinePath = decodedPath.map(
-        (point) => new google.maps.LatLng(point.lat, point.lng)
-      );
+      // Decode polyline and create GeoJSON
+      const coordinates = decodePolyline(route.overview_polyline.points);
 
-      // Create route polyline with bright visible color
-      polylineRef.current = new google.maps.Polyline({
-        path: polylinePath,
-        geodesic: true,
-        strokeColor: "#29d3c2", // bright teal
-        strokeOpacity: 0.9,
-        strokeWeight: 6, // Make it thicker so it's more visible
-        zIndex: 1000, // Put it on top
-        map: googleMapRef.current,
+      const routeGeoJSON = {
+        type: "Feature" as const,
+        properties: {},
+        geometry: {
+          type: "LineString" as const,
+          coordinates,
+        },
+      };
+
+      // Add route source and layer
+      map.addSource("route", {
+        type: "geojson",
+        data: routeGeoJSON,
       });
 
-      console.log("Route polyline created and added to map");
-
-      // Fit bounds to route with padding
-      const bounds = new google.maps.LatLngBounds();
-      decodedPath.forEach((point) => {
-        bounds.extend(new google.maps.LatLng(point.lat, point.lng));
+      map.addLayer({
+        id: "route",
+        type: "line",
+        source: "route",
+        layout: {
+          "line-join": "round",
+          "line-cap": "round",
+        },
+        paint: {
+          "line-color": "#3b82f6",
+          "line-width": 4,
+          "line-opacity": 0.8,
+        },
       });
 
-      // Include apartment markers in bounds if any
-      apartments.forEach((apartment) => {
-        bounds.extend(
-          new google.maps.LatLng(apartment.position.lat, apartment.position.lng)
-        );
+      // Fit map to route bounds
+      const bounds = new maplibregl.LngLatBounds();
+      coordinates.forEach(([lng, lat]) => {
+        bounds.extend([lng, lat]);
       });
 
-      // Fit bounds with padding
-      googleMapRef.current.fitBounds(bounds, {
-        top: 50,
-        right: 50,
-        bottom: 50,
-        left: 50,
+      map.fitBounds(bounds, {
+        padding: 50,
+        duration: 1000,
       });
 
-      console.log("Map bounds fitted to route");
+      console.log("Route polyline added to map");
     } catch (error) {
-      console.error("Failed to decode route polyline:", error);
+      console.error("Failed to add route to map:", error);
     }
-  }, [route, apartments]);
+  }, [route, mapLoaded]);
 
   // Update apartment markers
   useEffect(() => {
-    if (!googleMapRef.current) return;
+    if (!mapInstanceRef.current || !mapLoaded) return;
 
-    // Clear existing markers
-    markersRef.current.forEach((marker) => marker.setMap(null));
-    markersRef.current.clear();
+    const map = mapInstanceRef.current;
 
-    // Add new markers
-    apartments.forEach((apartmentMarker) => {
-      const { apartment } = apartmentMarker;
-      const bucketColor = getBucketColor(apartment.bucket);
+    try {
+      // Clear existing markers
+      markersRef.current.forEach((marker) => {
+        marker.remove();
+      });
+      markersRef.current.clear();
 
-      const marker = new google.maps.Marker({
-        position: apartmentMarker.position,
-        map: googleMapRef.current!,
-        title: apartmentMarker.title,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          fillColor: bucketColor,
-          fillOpacity: 0.8,
-          strokeColor: "#ffffff",
-          strokeWeight: 2,
-          scale: 10,
-        },
-        zIndex:
-          apartment.bucket === "≤1mi" ? 3 : apartment.bucket === "≤2mi" ? 2 : 1,
+      // Add new markers
+      apartments.forEach((apartment) => {
+        const { position, title, apartment: apt } = apartment;
+        const color = getBucketColor(apt.bucket);
+
+        // Create marker element
+        const markerElement = document.createElement("div");
+        markerElement.className = "apartment-marker";
+        markerElement.style.cssText = `
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          background-color: ${color};
+          border: 2px solid white;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+          cursor: pointer;
+          transition: all 0.2s ease;
+        `;
+
+        // Add hover effect
+        markerElement.addEventListener("mouseenter", () => {
+          markerElement.style.transform = "scale(1.5)";
+          markerElement.style.zIndex = "1000";
+        });
+
+        markerElement.addEventListener("mouseleave", () => {
+          markerElement.style.transform = "scale(1)";
+          markerElement.style.zIndex = "1";
+        });
+
+        // Add click handler
+        markerElement.addEventListener("click", () => {
+          if (onApartmentMarkerClick) {
+            onApartmentMarkerClick(apartment.id);
+          }
+        });
+
+        // Create marker
+        const marker = new maplibregl.Marker({
+          element: markerElement,
+        })
+          .setLngLat([position.lng, position.lat])
+          .addTo(map);
+
+        // Add popup
+        const popup = new maplibregl.Popup({
+          offset: 25,
+          closeButton: false,
+          closeOnClick: false,
+        }).setHTML(`
+          <div class="apartment-popup">
+            <h3 style="margin: 0 0 4px 0; font-size: 14px; font-weight: 600;">${title}</h3>
+            <p style="margin: 0; font-size: 12px; color: #666;">${apt.distanceToRoute.toFixed(1)} mi from route</p>
+          </div>
+        `);
+
+        marker.setPopup(popup);
+        markersRef.current.set(apartment.id, marker);
       });
 
-      // Add click listener
-      marker.addListener("click", () => {
-        if (onApartmentMarkerClick) {
-          onApartmentMarkerClick(apartmentMarker.id);
-        }
-      });
-
-      markersRef.current.set(apartmentMarker.id, marker);
-    });
-  }, [apartments, onApartmentMarkerClick]);
+      console.log(`Added ${apartments.length} apartment markers to map`);
+    } catch (error) {
+      console.error("Failed to add apartment markers:", error);
+    }
+  }, [apartments, mapLoaded, onApartmentMarkerClick]);
 
   // Handle highlighted apartment
   useEffect(() => {
-    markersRef.current.forEach((marker, id) => {
-      const isHighlighted = id === highlightedApartmentId;
+    if (!mapInstanceRef.current || !mapLoaded) return;
 
-      if (isHighlighted) {
-        marker.setZIndex(1000);
-        marker.setIcon({
-          path: google.maps.SymbolPath.CIRCLE,
-          fillColor: "#29d3c2", // accent-teal
-          fillOpacity: 1.0,
-          strokeColor: "#ffffff",
-          strokeWeight: 3,
-          scale: 14,
-        });
+    markersRef.current.forEach((marker, id) => {
+      const element = marker.getElement();
+      if (id === highlightedApartmentId) {
+        element.style.transform = "scale(1.8)";
+        element.style.zIndex = "1000";
+        element.style.boxShadow = "0 4px 8px rgba(0,0,0,0.4)";
+        marker.getPopup()?.addTo(mapInstanceRef.current!);
       } else {
-        // Reset to original style
-        const apartmentMarker = apartments.find((apt) => apt.id === id);
-        if (apartmentMarker) {
-          const bucketColor = getBucketColor(apartmentMarker.apartment.bucket);
-          marker.setZIndex(
-            apartmentMarker.apartment.bucket === "≤1mi"
-              ? 3
-              : apartmentMarker.apartment.bucket === "≤2mi"
-                ? 2
-                : 1
-          );
-          marker.setIcon({
-            path: google.maps.SymbolPath.CIRCLE,
-            fillColor: bucketColor,
-            fillOpacity: 0.8,
-            strokeColor: "#ffffff",
-            strokeWeight: 2,
-            scale: 10,
-          });
-        }
+        element.style.transform = "scale(1)";
+        element.style.zIndex = "1";
+        element.style.boxShadow = "0 2px 4px rgba(0,0,0,0.3)";
+        marker.getPopup()?.remove();
       }
     });
-  }, [highlightedApartmentId, apartments]);
+  }, [highlightedApartmentId, mapLoaded]);
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className={`relative ${className}`}>
+        <div className="absolute inset-0 bg-gray-900 rounded-lg flex items-center justify-center">
+          <div className="text-white text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
+            <p>Loading map...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className={`relative w-full h-full ${className}`}>
+    <div className={`relative ${className}`}>
       <div
         ref={mapRef}
-        className="w-full h-full"
-        style={{
-          minHeight: "100vh",
-          backgroundColor: "#1a1a1a",
-        }}
+        className="w-full h-full min-h-[400px] rounded-lg overflow-hidden"
+        style={{ background: "#1a1a1a" }}
       />
 
-      {isLoading && (
-        <div className="absolute inset-0 bg-background/50 backdrop-blur-sm flex items-center justify-center">
-          <div className="flex items-center gap-2 bg-background/90 backdrop-blur-sm rounded-lg px-4 py-2 border border-border">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-accent-teal border-t-transparent" />
-            <span className="text-sm font-medium">Loading map...</span>
+      {/* Map attribution */}
+      <div className="absolute bottom-2 right-2 text-xs text-gray-400 bg-black bg-opacity-60 px-2 py-1 rounded">
+        © OpenStreetMap contributors
+      </div>
+
+      {/* Loading indicator */}
+      {!mapLoaded && (
+        <div className="absolute inset-0 bg-gray-900 bg-opacity-75 rounded-lg flex items-center justify-center">
+          <div className="text-white text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
+            <p>Loading map...</p>
           </div>
         </div>
       )}
