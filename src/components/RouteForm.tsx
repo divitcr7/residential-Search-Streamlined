@@ -6,14 +6,23 @@ import { MapPin, Navigation, Car, Bike, User, Bus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { loadGoogleMaps, HOUSTON_CENTER } from "@/lib/maps";
 import { cn } from "@/lib/utils";
 import type { TravelMode, RouteFormData, DistanceBucket } from "@/types";
+import axios from "axios";
 
 interface RouteFormProps {
   onSubmit: (data: RouteFormData) => void;
   isLoading?: boolean;
   className?: string;
+}
+
+interface NominatimResult {
+  place_id: string;
+  display_name: string;
+  lat: string;
+  lon: string;
+  type: string;
+  class: string;
 }
 
 const travelModes: Array<{
@@ -27,6 +36,8 @@ const travelModes: Array<{
   { mode: "WALK", icon: User, label: "Walk" },
 ];
 
+const HOUSTON_CENTER = { lat: 29.7604, lng: -95.3698 };
+
 export function RouteForm({
   onSubmit,
   isLoading = false,
@@ -36,105 +47,152 @@ export function RouteForm({
   const [destination, setDestination] = useState("");
   const [travelMode, setTravelMode] = useState<TravelMode>("DRIVE");
   const [maxDistance, setMaxDistance] = useState<DistanceBucket>("≤2mi");
-  const [isGoogleMapsLoaded, setIsGoogleMapsLoaded] = useState(false);
+
+  // Autocomplete states
+  const [originSuggestions, setOriginSuggestions] = useState<NominatimResult[]>(
+    []
+  );
+  const [destinationSuggestions, setDestinationSuggestions] = useState<
+    NominatimResult[]
+  >([]);
+  const [showOriginSuggestions, setShowOriginSuggestions] = useState(false);
+  const [showDestinationSuggestions, setShowDestinationSuggestions] =
+    useState(false);
+  const [isSearching, setIsSearching] = useState(false);
 
   const originInputRef = useRef<HTMLInputElement>(null);
   const destinationInputRef = useRef<HTMLInputElement>(null);
-  const originAutocompleteRef = useRef<google.maps.places.Autocomplete | null>(
-    null
-  );
-  const destinationAutocompleteRef =
-    useRef<google.maps.places.Autocomplete | null>(null);
+  const originSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const destinationSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Allow manual input - skip Google Maps autocomplete for now
-  useEffect(() => {
-    // Just enable the inputs immediately
-    setIsGoogleMapsLoaded(true);
+  /**
+   * Search for places using Nominatim API
+   */
+  const searchPlaces = async (query: string): Promise<NominatimResult[]> => {
+    if (!query.trim() || query.length < 3) {
+      return [];
+    }
 
-    // Optional: Try to initialize autocomplete in background but don't block
-    const initAutocomplete = async () => {
-      try {
-        await loadGoogleMaps();
-
-        if (originInputRef.current) {
-          originAutocompleteRef.current = new google.maps.places.Autocomplete(
-            originInputRef.current,
-            {
-              types: ["establishment", "geocode"],
-              bounds: new google.maps.LatLngBounds(
-                new google.maps.LatLng(
-                  HOUSTON_CENTER.lat - 0.5,
-                  HOUSTON_CENTER.lng - 0.5
-                ),
-                new google.maps.LatLng(
-                  HOUSTON_CENTER.lat + 0.5,
-                  HOUSTON_CENTER.lng + 0.5
-                )
-              ),
-              strictBounds: false,
-            }
-          );
-
-          originAutocompleteRef.current.addListener("place_changed", () => {
-            const place = originAutocompleteRef.current?.getPlace();
-            if (place?.formatted_address) {
-              setOrigin(place.formatted_address);
-            }
-          });
+    try {
+      const response = await axios.get(
+        `https://nominatim.openstreetmap.org/search`,
+        {
+          params: {
+            q: query,
+            format: "json",
+            limit: 5,
+            addressdetails: 1,
+            bounded: 1,
+            viewbox: `${HOUSTON_CENTER.lng - 1},${HOUSTON_CENTER.lat - 1},${HOUSTON_CENTER.lng + 1},${HOUSTON_CENTER.lat + 1}`,
+            countrycodes: "us",
+          },
+          headers: {
+            "User-Agent": "PropertyFinder/1.0",
+          },
         }
+      );
 
-        if (destinationInputRef.current) {
-          destinationAutocompleteRef.current =
-            new google.maps.places.Autocomplete(destinationInputRef.current, {
-              types: ["establishment", "geocode"],
-              bounds: new google.maps.LatLngBounds(
-                new google.maps.LatLng(
-                  HOUSTON_CENTER.lat - 0.5,
-                  HOUSTON_CENTER.lng - 0.5
-                ),
-                new google.maps.LatLng(
-                  HOUSTON_CENTER.lat + 0.5,
-                  HOUSTON_CENTER.lng + 0.5
-                )
-              ),
-              strictBounds: false,
-            });
+      return response.data.map((result: any) => ({
+        place_id: result.place_id,
+        display_name: result.display_name,
+        lat: result.lat,
+        lon: result.lon,
+        type: result.type,
+        class: result.class,
+      }));
+    } catch (error) {
+      console.error("Nominatim search error:", error);
+      return [];
+    }
+  };
 
-          destinationAutocompleteRef.current.addListener(
-            "place_changed",
-            () => {
-              const place = destinationAutocompleteRef.current?.getPlace();
-              if (place?.formatted_address) {
-                setDestination(place.formatted_address);
-              }
-            }
-          );
+  /**
+   * Handle origin input changes with debounced search
+   */
+  const handleOriginChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setOrigin(value);
+
+    // Clear existing timeout
+    if (originSearchTimeoutRef.current) {
+      clearTimeout(originSearchTimeoutRef.current);
+    }
+
+    if (value.length >= 3) {
+      setIsSearching(true);
+      // Debounce the search
+      originSearchTimeoutRef.current = setTimeout(async () => {
+        try {
+          const results = await searchPlaces(value);
+          setOriginSuggestions(results);
+          setShowOriginSuggestions(true);
+        } catch (error) {
+          console.error("Origin search error:", error);
+        } finally {
+          setIsSearching(false);
         }
-      } catch (error) {
-        console.log("Autocomplete not available, using manual input");
-      }
-    };
+      }, 300); // 300ms delay
+    } else {
+      setOriginSuggestions([]);
+      setShowOriginSuggestions(false);
+      setIsSearching(false);
+    }
+  };
 
-    initAutocomplete();
+  /**
+   * Handle destination input changes with debounced search
+   */
+  const handleDestinationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setDestination(value);
 
-    return () => {
-      try {
-        if (originAutocompleteRef.current) {
-          google.maps.event.clearInstanceListeners(
-            originAutocompleteRef.current
-          );
+    // Clear existing timeout
+    if (destinationSearchTimeoutRef.current) {
+      clearTimeout(destinationSearchTimeoutRef.current);
+    }
+
+    if (value.length >= 3) {
+      setIsSearching(true);
+      // Debounce the search
+      destinationSearchTimeoutRef.current = setTimeout(async () => {
+        try {
+          const results = await searchPlaces(value);
+          setDestinationSuggestions(results);
+          setShowDestinationSuggestions(true);
+        } catch (error) {
+          console.error("Destination search error:", error);
+        } finally {
+          setIsSearching(false);
         }
-        if (destinationAutocompleteRef.current) {
-          google.maps.event.clearInstanceListeners(
-            destinationAutocompleteRef.current
-          );
-        }
-      } catch (error) {
-        // Ignore cleanup errors
-      }
-    };
-  }, []);
+      }, 300); // 300ms delay
+    } else {
+      setDestinationSuggestions([]);
+      setShowDestinationSuggestions(false);
+      setIsSearching(false);
+    }
+  };
 
+  /**
+   * Handle origin suggestion selection
+   */
+  const handleOriginSuggestionClick = (suggestion: NominatimResult) => {
+    setOrigin(suggestion.display_name);
+    setShowOriginSuggestions(false);
+    setOriginSuggestions([]);
+  };
+
+  /**
+   * Handle destination suggestion selection
+   */
+  const handleDestinationSuggestionClick = (suggestion: NominatimResult) => {
+    setDestination(suggestion.display_name);
+    setShowDestinationSuggestions(false);
+    setDestinationSuggestions([]);
+  };
+
+  /**
+   * Handle form submission
+   */
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (origin.trim() && destination.trim()) {
@@ -147,15 +205,40 @@ export function RouteForm({
     }
   };
 
-  const handleOriginChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setOrigin(value);
-  };
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        originInputRef.current &&
+        !originInputRef.current.contains(event.target as Node)
+      ) {
+        setShowOriginSuggestions(false);
+      }
+      if (
+        destinationInputRef.current &&
+        !destinationInputRef.current.contains(event.target as Node)
+      ) {
+        setShowDestinationSuggestions(false);
+      }
+    };
 
-  const handleDestinationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setDestination(value);
-  };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (originSearchTimeoutRef.current) {
+        clearTimeout(originSearchTimeoutRef.current);
+      }
+      if (destinationSearchTimeoutRef.current) {
+        clearTimeout(destinationSearchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return (
     <motion.div
@@ -167,26 +250,76 @@ export function RouteForm({
         <CardContent className="p-6">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-4">
-              <div className="relative">
+              {/* Origin Input */}
+              <div className="relative" ref={originInputRef}>
                 <MapPin className="absolute left-3 top-3 h-5 w-5 text-muted-foreground z-10" />
                 <Input
-                  ref={originInputRef}
                   placeholder="Origin (e.g., Rice University)"
                   value={origin}
                   onChange={handleOriginChange}
                   className="pl-11 bg-background/60 backdrop-blur-sm border-white/20"
+                  autoComplete="off"
                 />
+
+                {/* Origin Suggestions */}
+                {showOriginSuggestions && originSuggestions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-background/95 backdrop-blur-sm border border-white/20 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                    {originSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion.place_id}
+                        type="button"
+                        className="w-full px-4 py-2 text-left hover:bg-white/10 transition-colors border-b border-white/10 last:border-b-0"
+                        onClick={() => handleOriginSuggestionClick(suggestion)}
+                      >
+                        <div className="text-sm font-medium text-foreground">
+                          {suggestion.display_name}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              <div className="relative">
+              {/* Destination Input */}
+              <div className="relative" ref={destinationInputRef}>
                 <Navigation className="absolute left-3 top-3 h-5 w-5 text-muted-foreground z-10" />
                 <Input
-                  ref={destinationInputRef}
                   placeholder="Destination (e.g., Houston Downtown)"
                   value={destination}
                   onChange={handleDestinationChange}
                   className="pl-11 bg-background/60 backdrop-blur-sm border-white/20"
+                  autoComplete="off"
                 />
+
+                {/* Destination Suggestions */}
+                {showDestinationSuggestions &&
+                  destinationSuggestions.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-background/95 backdrop-blur-sm border border-white/20 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                      {destinationSuggestions.map((suggestion) => (
+                        <button
+                          key={suggestion.place_id}
+                          type="button"
+                          className="w-full px-4 py-2 text-left hover:bg-white/10 transition-colors border-b border-white/10 last:border-b-0"
+                          onClick={() =>
+                            handleDestinationSuggestionClick(suggestion)
+                          }
+                        >
+                          <div className="text-sm font-medium text-foreground">
+                            {suggestion.display_name}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+              </div>
+
+              {/* Fixed height search indicator to prevent layout shift */}
+              <div className="h-6 flex items-center justify-center">
+                {isSearching && (
+                  <div className="text-center text-sm text-muted-foreground">
+                    Searching locations...
+                  </div>
+                )}
               </div>
             </div>
 
@@ -202,46 +335,38 @@ export function RouteForm({
                       type="button"
                       onClick={() => setMaxDistance(distance)}
                       className={cn(
-                        "flex items-center justify-center gap-2 p-3 rounded-lg border transition-all duration-120 hover:scale-105 active:scale-95 backdrop-blur-sm",
+                        "px-3 py-2 text-sm rounded-md transition-colors",
                         maxDistance === distance
-                          ? "bg-accent-teal text-charcoal border-accent-teal shadow-lg"
-                          : "bg-background/60 border-white/20 hover:bg-background/70 hover:text-accent-foreground"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-background/60 backdrop-blur-sm border-white/20 hover:bg-white/10"
                       )}
                     >
-                      <span className="text-sm font-semibold">{distance}</span>
+                      {distance}
                     </button>
                   )
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">
-                {maxDistance === "≤1mi" &&
-                  "Comprehensive search • Every apartment within 1 mile"}
-                {maxDistance === "≤2mi" &&
-                  "Ultra-dense search • Every apartment within 2 miles"}
-                {maxDistance === "≤3mi" &&
-                  "Maximum coverage • Every single apartment within 3 miles"}
-              </p>
             </div>
 
             <div className="space-y-3">
               <label className="text-sm font-medium text-foreground">
                 Travel Mode
               </label>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {travelModes.map(({ mode, icon: Icon, label }) => (
                   <button
                     key={mode}
                     type="button"
                     onClick={() => setTravelMode(mode)}
                     className={cn(
-                      "flex flex-col items-center gap-2 p-3 rounded-lg border transition-all duration-120 hover:scale-105 active:scale-95 backdrop-blur-sm",
+                      "flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors",
                       travelMode === mode
-                        ? "bg-accent-teal text-charcoal border-accent-teal shadow-lg"
-                        : "bg-background/60 border-white/20 hover:bg-background/70 hover:text-accent-foreground"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-background/60 backdrop-blur-sm border-white/20 hover:bg-white/10"
                     )}
                   >
-                    <Icon className="h-5 w-5" />
-                    <span className="text-xs font-medium">{label}</span>
+                    <Icon className="h-4 w-4" />
+                    {label}
                   </button>
                 ))}
               </div>
@@ -249,23 +374,16 @@ export function RouteForm({
 
             <Button
               type="submit"
-              variant="accent"
-              size="lg"
-              className="w-full backdrop-blur-sm"
-              disabled={
-                !origin.trim() ||
-                !destination.trim() ||
-                !isGoogleMapsLoaded ||
-                isLoading
-              }
+              disabled={!origin.trim() || !destination.trim() || isLoading}
+              className="w-full bg-primary hover:bg-primary/90 transition-colors"
             >
               {isLoading ? (
-                <div className="flex items-center gap-2">
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Finding Apartments...
-                </div>
+                <>
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent mr-2" />
+                  Searching...
+                </>
               ) : (
-                "Find Apartments Along Route"
+                "Find Route & Apartments"
               )}
             </Button>
           </form>

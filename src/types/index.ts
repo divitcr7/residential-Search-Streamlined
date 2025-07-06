@@ -16,16 +16,24 @@ export interface PlaceDetails {
   formatted_address: string;
   geometry: {
     location: LatLng;
+    viewport?: LatLngBounds;
   };
   rating?: number;
   user_ratings_total?: number;
+  price_level?: number;
   photos?: {
     photo_reference: string;
     height: number;
     width: number;
   }[];
+  opening_hours?: {
+    open_now?: boolean;
+    weekday_text?: string[];
+  };
   website?: string;
+  phone?: string;
   vicinity?: string;
+  types?: string[];
 }
 
 export interface ApartmentListing {
@@ -53,7 +61,7 @@ export interface RouteFormData {
 }
 
 export interface MapRef {
-  fitBounds: (bounds: google.maps.LatLngBounds) => void;
+  fitBounds: (bounds: [[number, number], [number, number]]) => void;
   addMarkers: (apartments: ApartmentListing[]) => void;
   highlightMarker: (placeId: string) => void;
   clearHighlight: () => void;
